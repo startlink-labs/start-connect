@@ -165,15 +165,8 @@ function FileTransfer() {
 		setSalesforceProperties(prev => ({ ...prev, [prefix]: property }));
 	};
 
-	const { user } = useAuth();
-
 	const handleFileMapping = async () => {
 		if (isMapping) return;
-		
-		if (!user?.token) {
-			setStatus("トークンがありません");
-			return;
-		}
 
 		setIsMapping(true);
 		setStatus("ファイルマッピングを開始中...");
@@ -190,7 +183,6 @@ function FileTransfer() {
 				}, {} as any);
 
 			const result = await invoke('process_file_mapping', {
-				token: user.token,
 				contentVersionPath,
 				contentDocumentLinkPath,
 				contentVersionFolderPath,

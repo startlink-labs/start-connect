@@ -66,6 +66,23 @@ pub struct ObjectLabels {
     pub plural: String,
 }
 
+/// HubSpotアカウント詳細情報
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AccountDetails {
+    #[serde(rename = "portalId")]
+    pub portal_id: u64,
+    #[serde(rename = "accountType")]
+    pub account_type: String,
+    #[serde(rename = "timeZone")]
+    pub time_zone: String,
+    #[serde(rename = "companyCurrency")]
+    pub company_currency: String,
+    #[serde(rename = "uiDomain")]
+    pub ui_domain: String,
+    #[serde(rename = "dataHostingLocation")]
+    pub data_hosting_location: String,
+}
+
 /// スキーマAPIレスポンス
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SchemaResponse {
@@ -130,8 +147,13 @@ impl HubSpotService {
         }
     }
 
-    /// HubSpotトークンを検証してportal_idを取得
-    pub async fn verify_token(&self) -> Result<u64> {
+    /// HubSpotトークンを検証してアカウント情報を取得
+    pub async fn verify_token(&self) -> Result<AccountDetails> {
+        self.get_account_details().await
+    }
+
+    /// HubSpotアカウント詳細情報を取得
+    pub async fn get_account_details(&self) -> Result<AccountDetails> {
         let url = "https://api.hubapi.com/account-info/v3/details";
         
         let response = self
@@ -145,13 +167,8 @@ impl HubSpotService {
             return Err(anyhow!("無効なトークンです: {}", response.status()));
         }
 
-        let data: serde_json::Value = response.json().await?;
-        
-        let portal_id = data["portalId"]
-            .as_u64()
-            .ok_or_else(|| anyhow!("portalIdが見つかりません"))?;
-
-        Ok(portal_id)
+        let account_details: AccountDetails = response.json().await?;
+        Ok(account_details)
     }
 
     /// バッチでHubSpotレコードを検索

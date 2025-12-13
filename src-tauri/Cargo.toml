@@ -25,6 +25,7 @@ tauri-plugin-log = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-http = "2"
 tauri-plugin-fs = "2"
+tauri-plugin-shell = "2"
 
 # JSON/シリアライゼーション
 serde = { version = "1.0", features = ["derive"] }
@@ -45,3 +46,5 @@ chrono = { version = "0.4", features = ["serde"] }
 url = "2.5"
 # base64エンコード/デコード
 base64 = "0.22"
+# キーチェーン管理
+keyring = { version = "3.6", features = ["apple-native", "windows-native", "linux-native"] }

@@ -3,7 +3,17 @@ import { invoke } from "@tauri-apps/api/core";
 
 interface User {
 	portal_id?: number;
-	token: string;
+	ui_domain?: string;
+}
+
+interface PortalInfo {
+	portal_id?: number;
+	ui_domain?: string;
+}
+
+interface StoredCredentials {
+	portal_id?: number;
+	ui_domain?: string;
 }
 
 interface AuthContextType {
@@ -11,49 +21,33 @@ interface AuthContextType {
 	user: User | null;
 	login: (token: string) => Promise<void>;
 	logout: () => void;
+	isLoading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// 定数
-const STORAGE_KEYS = {
-	TOKEN: "hubspot_token",
-	PORTAL_ID: "hubspot_portal_id",
-} as const;
-
-
-
-// ユーティリティ関数
-class AuthStorage {
-	static getToken(): string | null {
-		return localStorage.getItem(STORAGE_KEYS.TOKEN);
-	}
-
-	static getPortalId(): number | undefined {
-		const portalId = localStorage.getItem(STORAGE_KEYS.PORTAL_ID);
-		return portalId ? parseInt(portalId) : undefined;
-	}
-
-	static setCredentials(token: string, portalId?: number): void {
-		localStorage.setItem(STORAGE_KEYS.TOKEN, token);
-		if (portalId) {
-			localStorage.setItem(STORAGE_KEYS.PORTAL_ID, portalId.toString());
+class AuthAPI {
+	static async getPortalInfo(): Promise<PortalInfo | null> {
+		try {
+			return await invoke('get_portal_info');
+		} catch {
+			return null;
 		}
 	}
 
-	static clearCredentials(): void {
-		localStorage.removeItem(STORAGE_KEYS.TOKEN);
-		localStorage.removeItem(STORAGE_KEYS.PORTAL_ID);
-	}
-}
-
-class AuthAPI {
-	static async verifyToken(token: string): Promise<{ portal_id?: number }> {
+	static async loginAndStore(token: string): Promise<StoredCredentials> {
 		try {
-			const portalId = await invoke('verify_hubspot_token', { token }) as number;
-			return { portal_id: portalId };
+			return await invoke('login_and_store', { token });
 		} catch (error) {
 			throw new Error(error as string || "認証に失敗しました");
+		}
+	}
+
+	static async logoutAndClear(): Promise<void> {
+		try {
+			await invoke('logout_and_clear');
+		} catch (error) {
+			throw new Error(error as string || "ログアウトに失敗しました");
 		}
 	}
 }
@@ -69,34 +63,54 @@ export function useAuth() {
 export function useAuthProvider(): AuthContextType {
 	const [user, setUser] = useState<User | null>(null);
 	const [isAuthenticated, setIsAuthenticated] = useState(false);
+	const [isLoading, setIsLoading] = useState(true);
 
-	// 初期化時にローカルストレージから認証情報を復元
+	// 初期化時にセキュアストレージから認証情報を復元
 	useEffect(() => {
-		const token = AuthStorage.getToken();
-		const portalId = AuthStorage.getPortalId();
-		
-		if (token) {
-			setUser({ token, portal_id: portalId });
-			setIsAuthenticated(true);
-		}
+		const initAuth = async () => {
+			try {
+				const portalInfo = await AuthAPI.getPortalInfo();
+				if (portalInfo) {
+					setUser({ 
+						portal_id: portalInfo.portal_id,
+						ui_domain: portalInfo.ui_domain
+					});
+					setIsAuthenticated(true);
+				}
+			} catch (error) {
+				console.error('認証情報の復元に失敗:', error);
+			} finally {
+				setIsLoading(false);
+			}
+		};
+
+		initAuth();
 	}, []);
 
 	const login = async (token: string): Promise<void> => {
 		try {
-			const userData = await AuthAPI.verifyToken(token);
-			
-			AuthStorage.setCredentials(token, userData.portal_id);
-			setUser({ token, portal_id: userData.portal_id });
+			const credentials = await AuthAPI.loginAndStore(token);
+			setUser({ 
+				portal_id: credentials.portal_id,
+				ui_domain: credentials.ui_domain
+			});
 			setIsAuthenticated(true);
 		} catch (error) {
 			throw error instanceof Error ? error : new Error("認証に失敗しました");
 		}
 	};
 
-	const logout = (): void => {
-		AuthStorage.clearCredentials();
-		setUser(null);
-		setIsAuthenticated(false);
+	const logout = async (): Promise<void> => {
+		try {
+			await AuthAPI.logoutAndClear();
+			setUser(null);
+			setIsAuthenticated(false);
+		} catch (error) {
+			console.error('ログアウトエラー:', error);
+			// エラーが発生してもUIの状態はリセット
+			setUser(null);
+			setIsAuthenticated(false);
+		}
 	};
 
 	return {
@@ -104,6 +118,7 @@ export function useAuthProvider(): AuthContextType {
 		user,
 		login,
 		logout,
+		isLoading,
 	};
 }
 

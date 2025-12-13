@@ -2,6 +2,7 @@
 mod commands;
 mod csv_processor;
 mod hubspot;
+mod secure_storage;
 
 use tauri::Manager;
 
@@ -16,8 +17,12 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init()) // ファイルダイアログ
         .plugin(tauri_plugin_http::init())   // HTTP通信
         .plugin(tauri_plugin_fs::init())     // ファイルシステム
+        .plugin(tauri_plugin_shell::init())  // シェルコマンド実行
         // フロントエンドから呼び出し可能なコマンドを登録
         .invoke_handler(tauri::generate_handler![
+            commands::get_portal_info,
+            commands::login_and_store,
+            commands::logout_and_clear,
             commands::verify_hubspot_token,
             commands::get_hubspot_objects,
             commands::analyze_csv_files,
@@ -28,7 +33,7 @@ pub fn run() {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
+                        .level(log::LevelFilter::Debug)
                         .build(),
                 )?;
             }

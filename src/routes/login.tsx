@@ -17,10 +17,22 @@ export const Route = createFileRoute("/login")({
 });
 
 function Login() {
-	const { isAuthenticated, login } = useAuth();
+	const { isAuthenticated, login, isLoading: authLoading } = useAuth();
 	const [token, setToken] = useState("");
 	const [isLoading, setIsLoading] = useState(false);
 	const [error, setError] = useState("");
+
+	// 認証情報の読み込み中はローディング表示
+	if (authLoading) {
+		return (
+			<div className="min-h-screen flex items-center justify-center bg-gray-50">
+				<div className="text-center">
+					<div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4" />
+					<p className="text-gray-600">認証情報を確認中...</p>
+				</div>
+			</div>
+		);
+	}
 
 	if (isAuthenticated) {
 		return <Navigate to="/dashboard" />;
