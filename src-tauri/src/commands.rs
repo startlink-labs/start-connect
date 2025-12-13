@@ -61,6 +61,8 @@ pub struct PortalInfo {
 
 
 
+
+
 /// フロントエンド用のポータル情報を取得（tokenなし）
 #[command]
 pub async fn get_portal_info() -> Result<Option<PortalInfo>, String> {
@@ -77,7 +79,7 @@ pub async fn get_portal_info() -> Result<Option<PortalInfo>, String> {
 
 /// 認証情報を保存してトークンを検証
 #[command]
-pub async fn login_and_store(token: String) -> Result<StoredCredentials, String> {
+pub async fn login_and_store(token: String) -> Result<PortalInfo, String> {
     log::info!("ログイン処理開始: token_len={}", token.len());
     
     let service = HubSpotService::new(token.clone());
@@ -108,7 +110,10 @@ pub async fn login_and_store(token: String) -> Result<StoredCredentials, String>
     }
     
     log::info!("ログイン成功: portal_id = {}", account_details.portal_id);
-    Ok(credentials)
+    Ok(PortalInfo {
+        portal_id: credentials.portal_id,
+        ui_domain: credentials.ui_domain,
+    })
 }
 
 /// 保存された認証情報をクリア

@@ -17,7 +17,7 @@ export const Route = createFileRoute("/login")({
 });
 
 function Login() {
-	const { isAuthenticated, login, isLoading: authLoading } = useAuth();
+	const { isAuthenticated, isLoading: authLoading, login } = useAuth();
 	const [token, setToken] = useState("");
 	const [isLoading, setIsLoading] = useState(false);
 	const [error, setError] = useState("");
@@ -48,13 +48,15 @@ function Login() {
 		setIsLoading(true);
 		setError("");
 
-		try {
-			await login(token);
-		} catch (err) {
-			setError("認証に失敗しました。トークンを確認してください。");
-		} finally {
-			setIsLoading(false);
-		}
+		login.mutate(token, {
+			onSuccess: () => {
+				setIsLoading(false);
+			},
+			onError: () => {
+				setError("認証に失敗しました。トークンを確認してください。");
+				setIsLoading(false);
+			}
+		});
 	};
 
 	return (

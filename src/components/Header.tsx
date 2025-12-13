@@ -4,10 +4,10 @@ import { HubSpotObjectsPopover } from "@/components/HubSpotObjectsSheet";
 import { open } from "@tauri-apps/plugin-shell";
 
 export function Header() {
-	const { user, logout } = useAuth();
+	const { portalInfo: user, logout } = useAuth();
 
-	const handleLogout = async () => {
-		await logout();
+	const handleLogout = () => {
+		logout.mutate();
 	};
 
 	return (
@@ -34,8 +34,9 @@ export function Header() {
 							size="sm" 
 							onClick={handleLogout}
 							className="text-gray-600 hover:text-gray-900"
+							disabled={logout.isPending}
 						>
-							ログアウト
+							{logout.isPending ? "ログアウト中..." : "ログアウト"}
 						</Button>
 					</div>
 				</div>
