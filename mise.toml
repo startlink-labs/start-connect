@@ -1,64 +1,33 @@
 [tools]
 node = "25"
 pnpm = "10"
-python = "3.14"
 rust = "1.92"
-uv = "0.9"
 
 
 [tasks.install]
-description = "Install dependencies for both frontend and backend"
-run = [
-  "cd backend && uv sync",
-  "cd frontend && pnpm install"
-]
+description = "Install dependencies"
+run = "pnpm install"
 
-
-
-[tasks."dev:backend"]
-description = "Start FastAPI development server"
-run = "cd backend && exec uv run fastapi dev main.py --port 8000"
-
-[tasks."dev:desktop"]
+[tasks.dev]
 description = "Start Tauri desktop app in development mode"
-run = "cd frontend && pnpm dev"
+run = "pnpm tauri dev"
 
-[tasks."build:desktop"]
+[tasks.build]
 description = "Build Tauri desktop app for production"
-run = "cd frontend && pnpm build"
+run = "pnpm tauri build"
 
 [tasks.test]
-description = "Run tests for both frontend and backend"
-run = [
-  "cd backend && uv run pytest",
-  "cd frontend && pnpm test"
-]
+description = "Run tests"
+run = "pnpm test"
 
 [tasks.lint]
-description = "Run linting for both frontend and backend"
-run = [
-  "cd backend && uv run ruff check .",
-  "cd frontend && pnpm lint"
-]
+description = "Run linting"
+run = "pnpm lint"
 
 [tasks.format]
-description = "Format code for both frontend and backend"
-run = [
-  "cd backend && uv run ruff format .",
-  "cd frontend && pnpm format"
-]
+description = "Format code"
+run = "pnpm format"
 
 [tasks.clean]
 description = "Clean build artifacts and dependencies"
-run = [
-  "cd backend && rm -rf .venv __pycache__ .pytest_cache",
-  "cd frontend && rm -rf node_modules dist .turbo"
-]
-
-[tasks.kill]
-description = "Kill all running development processes"
-run = [
-  "pkill -f 'fastapi dev main.py' || true",
-  "pkill -f 'multiprocessing.spawn' || true",
-  "lsof -ti:8000 | xargs kill -9 || true"
-]
+run = "rm -rf node_modules dist src-tauri/target .turbo"

@@ -19,9 +19,9 @@ pub fn run() {
         // フロントエンドから呼び出し可能なコマンドを登録
         .invoke_handler(tauri::generate_handler![
             commands::verify_hubspot_token,
-            commands::process_file_mapping,
+            commands::get_hubspot_objects,
             commands::analyze_csv_files,
-            commands::get_hubspot_objects
+            commands::process_file_mapping
         ])
         .setup(|app| {
             // デバッグビルド時のみログプラグインを有効化
