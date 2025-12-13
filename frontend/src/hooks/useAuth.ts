@@ -1,4 +1,5 @@
 import { useState, useEffect, createContext, useContext } from "react";
+import { invoke } from "@tauri-apps/api/core";
 
 interface User {
 	portal_id?: number;
@@ -20,9 +21,7 @@ const STORAGE_KEYS = {
 	PORTAL_ID: "hubspot_portal_id",
 } as const;
 
-const API_ENDPOINTS = {
-	VERIFY: "http://localhost:8000/api/v1/auth/verify",
-} as const;
+
 
 // ユーティリティ関数
 class AuthStorage {
@@ -50,18 +49,12 @@ class AuthStorage {
 
 class AuthAPI {
 	static async verifyToken(token: string): Promise<{ portal_id?: number }> {
-		const response = await fetch(API_ENDPOINTS.VERIFY, {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ token }),
-		});
-
-		if (!response.ok) {
-			const error = await response.json().catch(() => ({ detail: "Unknown error" }));
-			throw new Error(error.detail || "認証に失敗しました");
+		try {
+			const portalId = await invoke('verify_hubspot_token', { token }) as number;
+			return { portal_id: portalId };
+		} catch (error) {
+			throw new Error(error as string || "認証に失敗しました");
 		}
-
-		return response.json();
 	}
 }
 

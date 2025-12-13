@@ -1,14 +1,14 @@
 [package]
-name = "app"
+name = "sf-hs-file-trans-app"
 version = "0.1.0"
-description = "A Tauri App"
+description = "Salesforce to HubSpot File Transfer Application"
 authors = ["you"]
 license = ""
 repository = ""
 edition = "2021"
 rust-version = "1.77.2"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+# HubSpotファイル転送アプリケーション用の依存関係
 
 [lib]
 name = "app_lib"
@@ -18,9 +18,30 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2.5.3", features = [] }
 
 [dependencies]
-serde_json = "1.0"
-serde = { version = "1.0", features = ["derive"] }
-log = "0.4"
+# Tauriフレームワーク
 tauri = { version = "2.9.5", features = [] }
+# Tauriプラグイン
 tauri-plugin-log = "2"
 tauri-plugin-dialog = "2"
+tauri-plugin-http = "2"
+tauri-plugin-fs = "2"
+
+# JSON/シリアライゼーション
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+# CSV処理
+csv = "1.3"
+# HTTP通信
+reqwest = { version = "0.12", features = ["json", "multipart"] }
+# 非同期処理
+tokio = { version = "1.0", features = ["full"] }
+# エラーハンドリング
+anyhow = "1.0"
+# ログ
+log = "0.4"
+# 時間処理
+chrono = { version = "0.4", features = ["serde"] }
+# URL処理
+url = "2.5"
+# base64エンコード/デコード
+base64 = "0.22"

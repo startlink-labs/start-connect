@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "DataMapper",
+  "productName": "SF-HS File Transfer",
   "version": "0.1.0",
-  "identifier": "com.tauri.dev",
+  "identifier": "com.startlink.sf-hs-file-trans",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "DataMapper - produced by StartLink Inc.",
+        "title": "SF-HS File Transfer - produced by StartLink Inc.",
         "width": 1280,
         "height": 720,
         "resizable": true,
@@ -30,7 +30,11 @@
           "windows": ["main"],
           "permissions": [
             "dialog:allow-open",
-            "dialog:default"
+            "dialog:default",
+            "http:default",
+            "fs:allow-read-file",
+            "fs:allow-read-dir",
+            "fs:allow-exists"
           ]
         }
       ]

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "./useAuth";
+import { invoke } from "@tauri-apps/api/core";
 
 interface HubSpotObject {
   object_type_id: string;
@@ -26,16 +27,11 @@ export function useHubSpotObjects() {
     setError(null);
 
     try {
-      const response = await fetch(
-        `http://localhost:8000/api/v1/hubspot/objects?token=${encodeURIComponent(user.token)}`
-      );
-
-      if (!response.ok) {
-        throw new Error("オブジェクト情報の取得に失敗しました");
-      }
-
-      const data: HubSpotObjectsResponse = await response.json();
-      setObjects(data.objects);
+      const objects = await invoke('get_hubspot_objects', {
+        token: user.token
+      }) as HubSpotObject[];
+      
+      setObjects(objects);
     } catch (err) {
       setError(err instanceof Error ? err.message : "エラーが発生しました");
     } finally {
