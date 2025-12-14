@@ -35,7 +35,9 @@
             "fs:allow-read-file",
             "fs:allow-read-dir",
             "fs:allow-exists",
-            "shell:allow-open"
+            "shell:allow-open",
+            "core:event:default",
+            "deep-link:default"
           ]
         }
       ]
@@ -52,5 +54,13 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "deep-link": {
+      "mobile": [],
+      "desktop": {
+        "schemes": ["sfhsfiletrans"]
+      }
+    }
   }
 }

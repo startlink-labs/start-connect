@@ -51,7 +51,7 @@ export default {
 async function handleOAuthCallback(
   request: Request,
   env: Env,
-  corsHeaders: Record<string, string>
+  corsHeaders: Record<string, string>,
 ): Promise<Response> {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
@@ -63,46 +63,66 @@ async function handleOAuthCallback(
       {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      },
     );
   }
 
   try {
-    const tokenResponse = await fetch(
-      "https://api.hubapi.com/oauth/v1/token",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: new URLSearchParams({
-          grant_type: "authorization_code",
-          client_id: env.HUBSPOT_CLIENT_ID,
-          client_secret: env.HUBSPOT_CLIENT_SECRET,
-          redirect_uri: `${url.origin}/oauth/callback`,
-          code: code,
-        }),
-      }
-    );
+    const tokenResponse = await fetch("https://api.hubapi.com/oauth/v1/token", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        grant_type: "authorization_code",
+        client_id: env.HUBSPOT_CLIENT_ID,
+        client_secret: env.HUBSPOT_CLIENT_SECRET,
+        redirect_uri: `${url.origin}/oauth/callback`,
+        code: code,
+      }),
+    });
 
     if (!tokenResponse.ok) {
       const errorText = await tokenResponse.text();
       console.error("Token exchange failed:", errorText);
-      return new Response(
-        JSON.stringify({ error: "Token exchange failed" }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
+      return new Response(JSON.stringify({ error: "Token exchange failed" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const tokenData = (await tokenResponse.json()) as TokenResponse;
+
+    // Get portal info
+    const accountResponse = await fetch(
+      "https://api.hubapi.com/account-info/v3/details",
+      {
+        headers: { Authorization: `Bearer ${tokenData.access_token}` },
+      },
+    );
+
+    if (!accountResponse.ok) {
+      console.error("Failed to get account info");
+      return new Response(
+        JSON.stringify({ error: "Failed to get account info" }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
+
+    const accountData = (await accountResponse.json()) as {
+      portalId: number;
+      uiDomain: string;
+    };
 
     const deepLinkUrl = new URL("sfhsfiletrans://oauth/callback");
     deepLinkUrl.searchParams.set("access_token", tokenData.access_token);
     deepLinkUrl.searchParams.set("refresh_token", tokenData.refresh_token);
     deepLinkUrl.searchParams.set("expires_in", tokenData.expires_in.toString());
+    deepLinkUrl.searchParams.set("portal_id", accountData.portalId.toString());
+    deepLinkUrl.searchParams.set("ui_domain", accountData.uiDomain);
     if (state) {
       deepLinkUrl.searchParams.set("state", state);
     }
@@ -169,48 +189,39 @@ async function handleOAuthCallback(
 async function handleTokenRefresh(
   request: Request,
   env: Env,
-  corsHeaders: Record<string, string>
+  corsHeaders: Record<string, string>,
 ): Promise<Response> {
   try {
     const body = (await request.json()) as { refresh_token: string };
     const { refresh_token } = body;
 
     if (!refresh_token) {
-      return new Response(
-        JSON.stringify({ error: "Missing refresh_token" }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
+      return new Response(JSON.stringify({ error: "Missing refresh_token" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    const tokenResponse = await fetch(
-      "https://api.hubapi.com/oauth/v1/token",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: new URLSearchParams({
-          grant_type: "refresh_token",
-          client_id: env.HUBSPOT_CLIENT_ID,
-          client_secret: env.HUBSPOT_CLIENT_SECRET,
-          refresh_token: refresh_token,
-        }),
-      }
-    );
+    const tokenResponse = await fetch("https://api.hubapi.com/oauth/v1/token", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        client_id: env.HUBSPOT_CLIENT_ID,
+        client_secret: env.HUBSPOT_CLIENT_SECRET,
+        refresh_token: refresh_token,
+      }),
+    });
 
     if (!tokenResponse.ok) {
       const errorText = await tokenResponse.text();
       console.error("Token refresh failed:", errorText);
-      return new Response(
-        JSON.stringify({ error: "Token refresh failed" }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
+      return new Response(JSON.stringify({ error: "Token refresh failed" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const tokenData = (await tokenResponse.json()) as TokenResponse;

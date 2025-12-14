@@ -1,9 +1,9 @@
 // Tauriコマンド定義モジュール
 // フロントエンドから呼び出し可能なRust関数を定義
 
-use crate::csv_processor::{CsvProcessor, ObjectMapping};
+use crate::auth::SecureStorage;
+use crate::csv::{CsvProcessor, ObjectMapping};
 use crate::hubspot::HubSpotService;
-use crate::secure_storage::{SecureStorage, StoredCredentials};
 use anyhow::Result;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -48,104 +48,6 @@ pub struct ProgressInfo {
   pub message: String,
 }
 
-/// フロントエンド用のポータル情報（tokenなし）
-#[derive(Debug, Serialize)]
-pub struct PortalInfo {
-  pub portal_id: Option<u32>,
-  pub ui_domain: Option<String>,
-}
-
-/// フロントエンド用のポータル情報を取得（tokenなし）
-#[command]
-pub async fn get_portal_info() -> Result<Option<PortalInfo>, String> {
-  match SecureStorage::get_credentials() {
-    Ok(credentials) => Ok(Some(PortalInfo {
-      portal_id: credentials.portal_id,
-      ui_domain: credentials.ui_domain,
-    })),
-    Err(_) => Ok(None),
-  }
-}
-
-/// 認証情報を保存してトークンを検証
-#[command]
-pub async fn login_and_store(token: String) -> Result<PortalInfo, String> {
-  log::info!("ログイン処理開始: token_len={}", token.len());
-
-  let service = HubSpotService::new(token.clone());
-
-  // トークン検証
-  let account_details = match service.verify_token().await {
-    Ok(details) => {
-      log::debug!(
-        "トークン検証成功: portal_id={}, ui_domain={}",
-        details.portal_id,
-        details.ui_domain
-      );
-      details
-    }
-    Err(e) => {
-      log::error!("トークン検証失敗: {}", e);
-      return Err(format!("トークン検証に失敗しました: {}", e));
-    }
-  };
-
-  let credentials = StoredCredentials {
-    token: token.clone(),
-    portal_id: Some(account_details.portal_id as u32),
-    ui_domain: Some(account_details.ui_domain),
-  };
-
-  // セキュアストレージに保存
-  log::debug!("セキュアストレージに保存開始");
-  if let Err(e) = SecureStorage::store_credentials(&credentials) {
-    log::error!("認証情報保存失敗: {}", e);
-    return Err(format!("認証情報の保存に失敗しました: {}", e));
-  }
-
-  log::info!("ログイン成功: portal_id = {}", account_details.portal_id);
-  Ok(PortalInfo {
-    portal_id: credentials.portal_id,
-    ui_domain: credentials.ui_domain,
-  })
-}
-
-/// 保存された認証情報をクリア
-#[command]
-pub async fn logout_and_clear() -> Result<(), String> {
-  log::info!("ログアウト処理開始");
-
-  if let Err(e) = SecureStorage::clear_credentials() {
-    log::error!("認証情報クリア失敗: {}", e);
-    return Err(format!("認証情報のクリアに失敗しました: {}", e));
-  }
-
-  log::info!("ログアウト完了");
-  Ok(())
-}
-
-/// HubSpotトークン検証コマンド（後方互換性のため残す）
-#[command]
-pub async fn verify_hubspot_token(token: String) -> Result<u64, String> {
-  log::info!("HubSpotトークン検証開始");
-
-  let service = HubSpotService::new(token);
-
-  match service.verify_token().await {
-    Ok(account_details) => {
-      log::info!(
-        "トークン検証成功: portal_id = {}",
-        account_details.portal_id
-      );
-      Ok(account_details.portal_id)
-    }
-    Err(e) => {
-      log::error!("トークン検証失敗: {}", e);
-      Err(format!("トークン検証に失敗しました: {}", e))
-    }
-  }
-}
-
 /// ファイルマッピング処理のメインコマンド
 /// Salesforce CSVファイルを処理してHubSpotにファイルをアップロード・ノート作成
 #[command]
@@ -179,8 +81,9 @@ pub async fn process_file_mapping(
 
   emit_progress("hubspot_init", 10, "HubSpot接続を初期化中...");
 
-  // 2. 保存されたトークンを取得してHubSpotサービス初期化
-  let credentials = SecureStorage::get_credentials()
+  // 2. 保存されたトークンを取得してHubSpotサービス初期化（期限切れの場合は自動リフレッシュ）
+  let credentials = SecureStorage::get_credentials_with_refresh()
+    .await
     .map_err(|_| "認証情報が見つかりません。再ログインしてください。")?;
 
   let hubspot_service = HubSpotService::new(credentials.token);
@@ -345,8 +248,8 @@ pub async fn process_file_mapping(
 /// ファイルアップロードとノート作成を行う
 async fn process_single_record(
   hubspot_service: &HubSpotService,
-  record: &crate::csv_processor::ProcessableRecord,
-  file_info: &HashMap<String, crate::csv_processor::FileInfo>,
+  record: &crate::csv::processor::ProcessableRecord,
+  file_info: &HashMap<String, crate::csv::processor::FileInfo>,
   _content_folder_path: &str,
   hubspot_object: &str,
   hubspot_record_cache: &HashMap<String, String>,
@@ -452,8 +355,9 @@ pub async fn analyze_csv_files(
 pub async fn get_hubspot_objects() -> Result<Vec<HubSpotObject>, String> {
   log::info!("HubSpotオブジェクト一覧取得開始");
 
-  // 保存されたトークンを取得
-  let credentials = SecureStorage::get_credentials()
+  // 保存されたトークンを取得（期限切れの場合は自動リフレッシュ）
+  let credentials = SecureStorage::get_credentials_with_refresh()
+    .await
     .map_err(|_| "認証情報が見つかりません。再ログインしてください。")?;
 
   let service = HubSpotService::new(credentials.token);

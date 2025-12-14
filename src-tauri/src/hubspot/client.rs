@@ -66,23 +66,6 @@ pub struct ObjectLabels {
   pub plural: String,
 }
 
-/// HubSpotアカウント詳細情報
-#[derive(Debug, Serialize, Deserialize)]
-pub struct AccountDetails {
-  #[serde(rename = "portalId")]
-  pub portal_id: u64,
-  #[serde(rename = "accountType")]
-  pub account_type: String,
-  #[serde(rename = "timeZone")]
-  pub time_zone: String,
-  #[serde(rename = "companyCurrency")]
-  pub company_currency: String,
-  #[serde(rename = "uiDomain")]
-  pub ui_domain: String,
-  #[serde(rename = "dataHostingLocation")]
-  pub data_hosting_location: String,
-}
-
 /// スキーマAPIレスポンス
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SchemaResponse {
@@ -145,25 +128,6 @@ impl HubSpotService {
       client: Client::new(),
       rate_limit_delay: 100, // 100ms
     }
-  }
-
-  /// HubSpotトークンを検証してアカウント情報を取得
-  pub async fn verify_token(&self) -> Result<AccountDetails> {
-    self.get_account_details().await
-  }
-
-  /// HubSpotアカウント詳細情報を取得
-  pub async fn get_account_details(&self) -> Result<AccountDetails> {
-    let url = "https://api.hubapi.com/account-info/v3/details";
-
-    let response = self.client.get(url).bearer_auth(&self.token).send().await?;
-
-    if !response.status().is_success() {
-      return Err(anyhow!("無効なトークンです: {}", response.status()));
-    }
-
-    let account_details: AccountDetails = response.json().await?;
-    Ok(account_details)
   }
 
   /// バッチでHubSpotレコードを検索
@@ -366,27 +330,27 @@ impl HubSpotService {
   }
 
   /// すべてのHubSpotオブジェクトを取得（標準 + カスタム）
-  pub async fn get_all_objects(&self) -> Result<Vec<crate::commands::HubSpotObject>> {
+  pub async fn get_all_objects(&self) -> Result<Vec<crate::commands::business::HubSpotObject>> {
     let mut objects = Vec::new();
 
     // 標準オブジェクトを追加
     objects.extend(vec![
-      crate::commands::HubSpotObject {
+      crate::commands::business::HubSpotObject {
         object_type_id: "contacts".to_string(),
         name: "contacts".to_string(),
         label: "コンタクト".to_string(),
       },
-      crate::commands::HubSpotObject {
+      crate::commands::business::HubSpotObject {
         object_type_id: "companies".to_string(),
         name: "companies".to_string(),
         label: "会社".to_string(),
       },
-      crate::commands::HubSpotObject {
+      crate::commands::business::HubSpotObject {
         object_type_id: "deals".to_string(),
         name: "deals".to_string(),
         label: "取引".to_string(),
       },
-      crate::commands::HubSpotObject {
+      crate::commands::business::HubSpotObject {
         object_type_id: "tickets".to_string(),
         name: "tickets".to_string(),
         label: "チケット".to_string(),
@@ -409,7 +373,7 @@ impl HubSpotService {
   }
 
   /// カスタムオブジェクトを取得
-  async fn get_custom_objects(&self) -> Result<Vec<crate::commands::HubSpotObject>> {
+  async fn get_custom_objects(&self) -> Result<Vec<crate::commands::business::HubSpotObject>> {
     let url = "https://api.hubapi.com/crm/v3/schemas";
 
     let response = self.client.get(url).bearer_auth(&self.token).send().await?;
@@ -417,7 +381,7 @@ impl HubSpotService {
     if response.status().is_success() {
       let schema_response: SchemaResponse = response.json().await?;
 
-      let custom_objects: Vec<crate::commands::HubSpotObject> = schema_response
+      let custom_objects: Vec<crate::commands::business::HubSpotObject> = schema_response
         .results
         .into_iter()
         .filter(|obj| {
@@ -426,7 +390,7 @@ impl HubSpotService {
             "contacts" | "companies" | "deals" | "tickets"
           )
         })
-        .map(|obj| crate::commands::HubSpotObject {
+        .map(|obj| crate::commands::business::HubSpotObject {
           object_type_id: obj.id.clone(),
           name: obj.name,
           label: obj.labels.plural.to_string(),

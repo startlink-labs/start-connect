@@ -1,7 +1,7 @@
-import { createFileRoute, Navigate, Link } from "@tanstack/react-router";
-import { useAuth } from "../hooks/useAuth";
+import { createFileRoute, Link, Navigate } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useAuth } from "../hooks/useAuth";
 
 export const Route = createFileRoute("/dashboard")({
   component: Dashboard,

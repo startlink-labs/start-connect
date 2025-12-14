@@ -1,8 +1,8 @@
+import { File, Upload, X } from "lucide-react";
 import { useState } from "react";
-import { Upload, File, X } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { toast } from "sonner";
 
 interface FileDropzoneProps {
   onFileSelect: (path: string) => void;

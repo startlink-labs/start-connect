@@ -1,11 +1,12 @@
 import { createFileRoute, Navigate } from "@tanstack/react-router";
-import { useState, useEffect } from "react";
-import { useAuth } from "../hooks/useAuth";
-import { useHubSpotObjects } from "../hooks/useHubSpotObjects";
+import { invoke } from "@tauri-apps/api/core";
+import { FolderOpen } from "lucide-react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -16,9 +17,8 @@ import {
 import { FileDropzone } from "../components/FileDropzone";
 import { FixedActionBar } from "../components/FixedActionBar";
 import { StepProgress } from "../components/StepProgress";
-import { FolderOpen } from "lucide-react";
-import { invoke } from "@tauri-apps/api/core";
-import { toast } from "sonner";
+import { useAuth } from "../hooks/useAuth";
+import { useHubSpotObjects } from "../hooks/useHubSpotObjects";
 import { useHeaderStore } from "../stores/headerStore";
 
 export const Route = createFileRoute("/file-transfer")({
@@ -40,7 +40,7 @@ interface SalesforceProperty {
 }
 
 function FileTransfer() {
-  const { isAuthenticated, portalInfo } = useAuth();
+  const { isAuthenticated } = useAuth();
   const { setCenterMessage } = useHeaderStore();
   const { objects: hubspotObjects } = useHubSpotObjects();
   const [contentVersionPath, setContentVersionPath] = useState("");

@@ -1,16 +1,12 @@
-import { useAuth } from "../hooks/useAuth";
-import { Button } from "@/components/ui/button";
-import { HubSpotObjectsPopover } from "@/components/HubSpotObjectsSheet";
 import { open } from "@tauri-apps/plugin-shell";
+import { HubSpotObjectsPopover } from "@/components/HubSpotObjectsSheet";
+import { Button } from "@/components/ui/button";
+import { useAuth } from "../hooks/useAuth";
 import { useHeaderStore } from "../stores/headerStore";
 
 export function Header() {
-  const { portalInfo: user, logout } = useAuth();
+  const { portalInfo, logout } = useAuth();
   const { centerMessage } = useHeaderStore();
-
-  const handleLogout = () => {
-    logout.mutate();
-  };
 
   return (
     <header className="border-b bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/60">
@@ -22,18 +18,19 @@ export function Header() {
             </div>
           )}
           <div className="flex items-center space-x-3">
-            {user?.portal_id && user?.ui_domain && (
+            {portalInfo?.portal_id && portalInfo?.ui_domain && (
               <div className="flex items-center space-x-2">
-                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                <div className="w-2 h-2 bg-green-500 rounded-full" />
                 <button
+                  type="button"
                   onClick={() =>
                     open(
-                      `https://${user.ui_domain}/settings/${user.portal_id}/account-defaults/general`,
+                      `https://${portalInfo.ui_domain}/settings/${portalInfo.portal_id}/account-defaults/general`,
                     )
                   }
-                  className="text-sm text-gray-600 hover:text-gray-900 underline decoration-gray-400 hover:decoration-gray-600 transition-colors cursor-pointer"
+                  className="text-sm text-gray-600 hover:text-gray-900 underline decoration-gray-400 hover:decoration-gray-600 transition-colors"
                 >
-                  Portal: {user.portal_id}
+                  Portal: {portalInfo.portal_id}
                 </button>
               </div>
             )}
@@ -43,8 +40,7 @@ export function Header() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={handleLogout}
-              className="text-gray-600 hover:text-gray-900"
+              onClick={() => logout.mutate()}
               disabled={logout.isPending}
             >
               {logout.isPending ? "ログアウト中..." : "ログアウト"}

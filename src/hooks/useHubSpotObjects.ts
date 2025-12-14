@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from "react";
-import { useAuth } from "./useAuth";
 import { invoke } from "@tauri-apps/api/core";
+import { useEffect, useRef, useState } from "react";
+import { useAuth } from "./useAuth";
 
 interface HubSpotObject {
   object_type_id: string;
@@ -37,7 +37,7 @@ export function useHubSpotObjects() {
     if (isAuthenticated && !fetchedRef.current) {
       fetchObjects();
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, fetchObjects]);
 
   const refetch = () => {
     fetchedRef.current = false;

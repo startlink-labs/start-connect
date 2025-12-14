@@ -1,8 +1,8 @@
 import { createRootRoute, Outlet } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
-import { useAuth } from "../hooks/useAuth";
-import { Header } from "../components/Header";
 import { Toaster } from "@/components/ui/sonner";
+import { Header } from "../components/Header";
+import { useAuth } from "../hooks/useAuth";
 
 function RootLayout() {
   const { isAuthenticated } = useAuth();
