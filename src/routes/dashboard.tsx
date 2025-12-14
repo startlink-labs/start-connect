@@ -37,11 +37,12 @@ function Dashboard() {
           </CardHeader>
           <CardContent>
             <p className="text-gray-600 mb-4">
-              Salesforce ChatterのデータをHubSpotに移行します。
+              Salesforce
+              FeedItemとFeedCommentのCSVファイルを処理して、HubSpotに移行します。
             </p>
-            <Button className="w-full" disabled>
-              準備中
-            </Button>
+            <Link to="/chatter-migration">
+              <Button className="w-full">Chatter移行を開始</Button>
+            </Link>
           </CardContent>
         </Card>
       </div>

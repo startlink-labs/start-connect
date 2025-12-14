@@ -21,7 +21,7 @@ import {
   DEFAULT_CUSTOM_OBJECT_PROPERTY,
   DEFAULT_SALESFORCE_PROPERTIES,
 } from "@/constants/salesforce";
-import type { ObjectGroup } from "@/hooks/useCsvAnalysis";
+import type { ObjectGroup } from "@/hooks/useChatterAnalysis";
 import { FixedActionBar } from "../FixedActionBar";
 
 interface MappingConfigStepProps {
@@ -64,10 +64,10 @@ export const MappingConfigStep = ({
             <div>
               <CardTitle className="flex items-center gap-2 text-xl">
                 <Settings2 className="h-5 w-5 text-primary" />
-                マッピング設定
+                オブジェクトマッピング設定
               </CardTitle>
               <p className="text-muted-foreground text-sm mt-1">
-                ContentDocumentLink.csvからオブジェクトごとの関連添付ファイルレコード数を取得しました。
+                FeedItem.csvからオブジェクトごとのChatter投稿数を取得しました。
                 <br />
                 マッピングするオブジェクトを選択してください。
               </p>
@@ -184,11 +184,11 @@ export const MappingConfigStep = ({
       <ExecutionConfirmDialog
         open={showConfirmDialog}
         onOpenChange={setShowConfirmDialog}
-        title="ファイルマッピング実行の確認"
+        title="Chatter移行実行の確認"
         steps={[
-          "両CSVからマッピング対象レコードを抽出",
+          "FeedItemとFeedCommentをCSVから読み込み",
           "HubSpotプロパティでレコード存在確認",
-          "CSVのVersionData(Base64)からファイルをアップロード",
+          "FeedItemとコメントをHTML形式に整形",
           "HubSpotレコードにノートを作成",
           "処理結果CSVを出力",
         ]}
@@ -203,7 +203,7 @@ export const MappingConfigStep = ({
           onClick: onBack,
         }}
         rightButton={{
-          label: "ファイルマッピング実行",
+          label: "Chatter移行実行",
           onClick: () => setShowConfirmDialog(true),
           disabled:
             isMapping ||

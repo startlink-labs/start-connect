@@ -531,3 +531,367 @@ pub async fn cleanup_temp_csv(temp_path: String) -> Result<(), String> {
   log::info!("一時ファイルを削除: {}", temp_path);
   Ok(())
 }
+
+/// Chatter CSVファイルを分析してオブジェクトグループを取得
+#[command]
+pub async fn analyze_chatter_files(
+  feed_item_path: String,
+  feed_comment_path: String,
+) -> Result<AnalyzeResponse, String> {
+  log::info!("Chatterファイル分析開始");
+
+  // CSVファイルの存在確認
+  if !std::path::Path::new(&feed_item_path).exists() {
+    return Err("FeedItem.csvが見つかりません".to_string());
+  }
+  if !std::path::Path::new(&feed_comment_path).exists() {
+    return Err("FeedComment.csvが見つかりません".to_string());
+  }
+
+  // FeedItemのParentIdでオブジェクトをグルーピング
+  match CsvProcessor::analyze_chatter_object_groups(&feed_item_path) {
+    Ok(object_groups) => {
+      log::info!("Chatter分析完了: {}種類のオブジェクト", object_groups.len());
+      Ok(AnalyzeResponse { object_groups })
+    }
+    Err(e) => Err(format!("{}", e)),
+  }
+}
+
+/// Chatter移行処理のメインコマンド
+#[command]
+pub async fn process_chatter_migration(
+  feed_item_path: String,
+  feed_comment_path: String,
+  object_mappings: HashMap<String, ObjectMapping>,
+  window: tauri::Window,
+) -> Result<FileMappingResponse, String> {
+  log::info!("Chatter移行処理開始");
+
+  let emit_progress = |step: &str, progress: u8, message: &str| {
+    let progress_info = ProgressInfo {
+      step: step.to_string(),
+      progress,
+      message: message.to_string(),
+    };
+    let _ = window.emit("chatter-migration-progress", &progress_info);
+  };
+
+  emit_progress("validation", 5, "入力データを検証中...");
+
+  // CSVファイルの存在確認
+  if !std::path::Path::new(&feed_item_path).exists() {
+    return Err("FeedItem.csvが見つかりません".to_string());
+  }
+  if !std::path::Path::new(&feed_comment_path).exists() {
+    return Err("FeedComment.csvが見つかりません".to_string());
+  }
+
+  emit_progress("hubspot_init", 10, "HubSpot接続を初期化中...");
+
+  let credentials = SecureStorage::get_credentials_with_refresh()
+    .await
+    .map_err(|_| "認証情報が見つかりません。再ログインしてください。")?;
+
+  let portal_id = credentials.portal_id.unwrap_or(0).to_string();
+  let ui_domain = credentials.ui_domain.unwrap_or_else(|| "app.hubspot.com".to_string());
+  let hubspot_service = HubSpotService::new(credentials.token);
+
+  emit_progress("extract_records", 20, "Chatterレコードを抽出中...");
+
+  // FeedItemを読み込み
+  let feed_items_by_prefix = CsvProcessor::extract_chatter_records(
+    &feed_item_path,
+    &feed_comment_path,
+    &object_mappings,
+  )
+  .map_err(|e| format!("FeedItem抽出エラー: {}", e))?;
+
+  // 対象FeedItemIdを収集
+  let target_feed_item_ids: std::collections::HashSet<String> = feed_items_by_prefix
+    .values()
+    .flat_map(|items| items.iter().map(|item| item.id.clone()))
+    .collect();
+
+  emit_progress("load_comments", 30, "コメントを読み込み中...");
+
+  // FeedCommentを読み込み
+  let comments_by_feed_item = CsvProcessor::load_feed_comments(&feed_comment_path, &target_feed_item_ids)
+    .map_err(|e| format!("FeedComment読み込みエラー: {}", e))?;
+
+  emit_progress("hubspot_search", 40, "HubSpotレコードを検索中...");
+
+  // 結果CSVファイルを作成
+  let temp_dir = std::env::temp_dir();
+  let result_csv_path = temp_dir.join(format!("chatter_migration_result_{}.csv", chrono::Utc::now().timestamp()));
+  let mut csv_writer = csv::Writer::from_path(&result_csv_path)
+    .map_err(|e| format!("CSVファイル作成エラー: {}", e))?;
+
+  csv_writer.write_record(&[
+    "Salesforce Record ID",
+    "HubSpot Object",
+    "HubSpot Record ID",
+    "HubSpot Record URL",
+    "Feed Items Count",
+    "Notes Created",
+    "Status",
+    "Reason"
+  ]).map_err(|e| format!("CSVヘッダー書き込みエラー: {}", e))?;
+
+  let mut hubspot_record_cache = HashMap::new();
+  let mut summaries: HashMap<String, ObjectSummary> = HashMap::new();
+
+  // HubSpotレコード検索
+  for (prefix, feed_items) in &feed_items_by_prefix {
+    if let Some(mapping) = object_mappings.get(prefix) {
+      let unique_parent_ids: Vec<String> = feed_items
+        .iter()
+        .map(|item| item.parent_id.clone())
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
+
+      log::info!(
+        "{}: {}件のユニークParentIDを検索",
+        prefix,
+        unique_parent_ids.len()
+      );
+
+      match hubspot_service
+        .batch_find_records(
+          &mapping.hubspot_object,
+          &mapping.salesforce_property,
+          &unique_parent_ids,
+        )
+        .await
+      {
+        Ok(found_records) => {
+          log::info!(
+            "{}: {}件中{}件がHubSpotに存在",
+            prefix,
+            unique_parent_ids.len(),
+            found_records.len()
+          );
+
+          // 見つからなかったIDをCSVに記録
+          if found_records.len() < unique_parent_ids.len() {
+            let missing_ids: Vec<&String> = unique_parent_ids
+              .iter()
+              .filter(|id| !found_records.contains_key(*id))
+              .collect();
+
+            let missing_count = missing_ids.len();
+
+            for missing_id in missing_ids {
+              let _ = csv_writer.write_record(&[
+                missing_id,
+                &mapping.hubspot_object,
+                "",
+                "",
+                "0",
+                "0",
+                "skipped",
+                "HubSpotにレコードが存在しません"
+              ]);
+            }
+
+            summaries
+              .entry(prefix.clone())
+              .or_insert_with(|| ObjectSummary {
+                prefix: prefix.clone(),
+                hubspot_object: mapping.hubspot_object.clone(),
+                success_count: 0,
+                skipped_count: 0,
+                error_count: 0,
+                uploaded_files: 0,
+              })
+              .skipped_count += missing_count;
+          }
+
+          hubspot_record_cache.extend(found_records);
+        }
+        Err(e) => {
+          log::error!("HubSpot検索エラー {}: {}", prefix, e);
+          continue;
+        }
+      }
+    }
+  }
+
+  emit_progress("create_notes", 60, "ノートを作成中...");
+
+  // 処理可能レコードをグループ化
+  let processable_records = CsvProcessor::group_chatter_records(
+    feed_items_by_prefix,
+    comments_by_feed_item,
+    &hubspot_record_cache,
+  );
+
+  // ノート作成処理
+  for (i, record) in processable_records.iter().enumerate() {
+    let progress = 60 + (30 * (i + 1) / processable_records.len()) as u8;
+    emit_progress(
+      "create_notes",
+      progress,
+      &format!("処理中 ({}/{})", i + 1, processable_records.len()),
+    );
+
+    if let Some(mapping) = object_mappings.iter().find(|(prefix, _)| {
+      record.salesforce_id.starts_with(prefix.as_str())
+    }).map(|(_, m)| m) {
+      let hubspot_record_id = hubspot_record_cache
+        .get(&record.salesforce_id)
+        .cloned()
+        .unwrap_or_default();
+
+      let record_url = if !hubspot_record_id.is_empty() {
+        build_record_url(&ui_domain, &portal_id, &mapping.hubspot_object, &hubspot_record_id)
+      } else {
+        String::new()
+      };
+
+      summaries
+        .entry(record.salesforce_id[..3].to_string())
+        .or_insert_with(|| ObjectSummary {
+          prefix: record.salesforce_id[..3].to_string(),
+          hubspot_object: mapping.hubspot_object.clone(),
+          success_count: 0,
+          skipped_count: 0,
+          error_count: 0,
+          uploaded_files: 0,
+        });
+
+      let mut notes_created = 0;
+
+      for feed_item_with_comments in &record.feed_items {
+        let note_html = generate_chatter_note_html(feed_item_with_comments);
+
+        match hubspot_service
+          .create_note_for_record(
+            &hubspot_record_id,
+            &mapping.hubspot_object,
+            &note_html,
+            None,
+          )
+          .await
+        {
+          Ok(_) => {
+            notes_created += 1;
+          }
+          Err(e) => {
+            log::error!(
+              "ノート作成失敗 {} (FeedItem: {}): {}",
+              record.salesforce_id,
+              feed_item_with_comments.feed_item.id,
+              e
+            );
+          }
+        }
+      }
+
+      let status = if notes_created == record.feed_items.len() {
+        if let Some(summary) = summaries.get_mut(&record.salesforce_id[..3]) {
+          summary.success_count += 1;
+          summary.uploaded_files += notes_created;
+        }
+        "success"
+      } else if notes_created > 0 {
+        if let Some(summary) = summaries.get_mut(&record.salesforce_id[..3]) {
+          summary.success_count += 1;
+          summary.uploaded_files += notes_created;
+        }
+        "partial"
+      } else {
+        if let Some(summary) = summaries.get_mut(&record.salesforce_id[..3]) {
+          summary.error_count += 1;
+        }
+        "error"
+      };
+
+      let _ = csv_writer.write_record(&[
+        &record.salesforce_id,
+        &mapping.hubspot_object,
+        &hubspot_record_id,
+        &record_url,
+        &record.feed_items.len().to_string(),
+        &notes_created.to_string(),
+        status,
+        "",
+      ]);
+    }
+  }
+
+  csv_writer.flush().map_err(|e| format!("CSVフラッシュエラー: {}", e))?;
+  emit_progress("complete", 100, "処理完了");
+
+  log::info!("Chatter移行処理完了");
+
+  Ok(FileMappingResponse {
+    result_csv_path: result_csv_path.to_string_lossy().to_string(),
+    summaries: summaries.into_values().collect(),
+  })
+}
+
+/// ChatterノートのHTMLを生成
+fn generate_chatter_note_html(
+  feed_item_with_comments: &crate::csv::processor::FeedItemWithComments,
+) -> String {
+  let feed_item = &feed_item_with_comments.feed_item;
+  let comments = &feed_item_with_comments.comments;
+
+  // 日時を整形 (ISO 8601 -> 読みやすい形式)
+  let format_date = |date_str: &str| -> String {
+    date_str
+      .replace('T', " ")
+      .replace('Z', "")
+      .split('.')
+      .next()
+      .unwrap_or(date_str)
+      .to_string()
+  };
+
+  let mut html = String::new();
+
+  // ヘッダー
+  html.push_str("<h3>📝 Chatter投稿</h3>");
+  html.push_str(&format!(
+    "<p><strong>投稿日時:</strong> {}</p>",
+    format_date(&feed_item.created_date)
+  ));
+  html.push_str(&format!(
+    "<p><strong>投稿者ID:</strong> {}</p>",
+    feed_item.created_by_id
+  ));
+
+  // 投稿本文
+  html.push_str("<div style=\"border-left: 3px solid #0091ae; padding-left: 12px; margin: 12px 0;\">");
+  html.push_str(&feed_item.body);
+  html.push_str("</div>");
+
+  // コメント
+  if !comments.is_empty() {
+    html.push_str(&format!("<h4>💬 コメント ({}件)</h4>", comments.len()));
+
+    for comment in comments {
+      html.push_str("<div style=\"margin-left: 20px; border-left: 2px solid #ccc; padding-left: 12px; margin-top: 8px;\">");
+      html.push_str(&format!(
+        "<p><strong>{}</strong> - 投稿者ID: {}</p>",
+        format_date(&comment.created_date),
+        comment.created_by_id
+      ));
+      html.push_str("<div>");
+      html.push_str(&comment.comment_body);
+      html.push_str("</div>");
+      html.push_str("</div>");
+    }
+  }
+
+  // フッター
+  html.push_str("<hr style=\"margin: 16px 0; border: none; border-top: 1px solid #e0e0e0;\">");
+  html.push_str(&format!(
+    "<p style=\"font-size: 11px; color: #666;\">Salesforce FeedItem ID: {}</p>",
+    feed_item.id
+  ));
+
+  html
+}

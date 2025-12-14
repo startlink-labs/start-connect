@@ -12,6 +12,7 @@ interface ResultSummaryStepProps {
   downloadCompleted: boolean;
   onReset: () => void;
   onDownloadComplete?: () => void;
+  isChatterMigration?: boolean;
 }
 
 export const ResultSummaryStep = ({
@@ -20,6 +21,7 @@ export const ResultSummaryStep = ({
   downloadCompleted,
   onReset,
   onDownloadComplete,
+  isChatterMigration = false,
 }: ResultSummaryStepProps) => {
   const handleDownload = async () => {
     if (!resultCsvPath) {
@@ -112,7 +114,7 @@ export const ResultSummaryStep = ({
                       {summary.uploaded_files}
                     </div>
                     <div className="text-xs text-muted-foreground mt-1">
-                      アップロードファイル
+                      {isChatterMigration ? "ノート作成数" : "ファイル数"}
                     </div>
                   </div>
                 </div>

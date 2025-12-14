@@ -72,6 +72,50 @@ pub struct ObjectMapping {
   pub salesforce_property: String,
 }
 
+/// ChatterFeedItemのCSVレコード
+#[derive(Debug, Deserialize, Clone)]
+pub struct ChatterFeedItemRecord {
+  #[serde(rename = "Id")]
+  pub id: String,
+  #[serde(rename = "ParentId")]
+  pub parent_id: String,
+  #[serde(rename = "Body")]
+  pub body: String,
+  #[serde(rename = "CreatedById")]
+  pub created_by_id: String,
+  #[serde(rename = "CreatedDate")]
+  pub created_date: String,
+}
+
+/// ChatterFeedCommentのCSVレコード
+#[derive(Debug, Deserialize, Clone)]
+pub struct ChatterCommentRecord {
+  #[serde(rename = "Id")]
+  pub id: String,
+  #[serde(rename = "FeedItemId")]
+  pub feed_item_id: String,
+  #[serde(rename = "CommentBody")]
+  pub comment_body: String,
+  #[serde(rename = "CreatedById")]
+  pub created_by_id: String,
+  #[serde(rename = "CreatedDate")]
+  pub created_date: String,
+}
+
+/// FeedItemとコメントをまとめた構造
+#[derive(Debug, Clone)]
+pub struct FeedItemWithComments {
+  pub feed_item: ChatterFeedItemRecord,
+  pub comments: Vec<ChatterCommentRecord>,
+}
+
+/// 処理可能なChatterレコード
+#[derive(Debug)]
+pub struct ProcessableChatterRecord {
+  pub salesforce_id: String,
+  pub feed_items: Vec<FeedItemWithComments>,
+}
+
 /// CSV処理を行う構造体
 pub struct CsvProcessor;
 
@@ -283,5 +327,146 @@ impl CsvProcessor {
     );
 
     Ok(object_groups)
+  }
+
+  /// Chatter FeedItem.csvを分析してParentIdでオブジェクトグループを取得
+  pub fn analyze_chatter_object_groups(feed_item_path: &str) -> Result<HashMap<String, usize>> {
+    let mut reader = ReaderBuilder::new()
+      .has_headers(true)
+      .from_path(feed_item_path)?;
+
+    let mut object_groups: HashMap<String, usize> = HashMap::new();
+    let mut total_records = 0;
+
+    // ヘッダーを取得してParentIdのインデックスを特定
+    let headers = reader.headers()?.clone();
+    let parent_id_index = headers
+      .iter()
+      .position(|h| h == "ParentId")
+      .ok_or_else(|| anyhow!("ParentIdカラムが見つかりません"))?;
+
+    for result in reader.records() {
+      let record = result?;
+      total_records += 1;
+
+      if let Some(parent_id) = record.get(parent_id_index) {
+        let parent_id = parent_id.trim();
+        if !parent_id.is_empty() && parent_id.len() >= 3 {
+          let prefix = &parent_id[0..3];
+          *object_groups.entry(prefix.to_string()).or_insert(0) += 1;
+        }
+      }
+    }
+
+    log::info!(
+      "FeedItem.csv分析完了: {}行、{}種類のオブジェクトを検出",
+      total_records,
+      object_groups.len()
+    );
+
+    Ok(object_groups)
+  }
+
+  /// Chatter FeedItemとFeedCommentを読み込んでマッピング対象レコードを抽出
+  pub fn extract_chatter_records(
+    feed_item_path: &str,
+    _feed_comment_path: &str,
+    object_mappings: &HashMap<String, ObjectMapping>,
+  ) -> Result<HashMap<String, Vec<ChatterFeedItemRecord>>> {
+    let mut feed_items_by_prefix: HashMap<String, Vec<ChatterFeedItemRecord>> = HashMap::new();
+    
+    // FeedItem.csvを読み込み
+    let mut reader = ReaderBuilder::new().has_headers(true).from_path(feed_item_path)?;
+    
+    for result in reader.deserialize() {
+      let record: ChatterFeedItemRecord = result?;
+      
+      if record.parent_id.len() >= 3 {
+        let prefix = &record.parent_id[..3];
+        
+        if object_mappings.contains_key(prefix) {
+          feed_items_by_prefix
+            .entry(prefix.to_string())
+            .or_insert_with(Vec::new)
+            .push(record);
+        }
+      }
+    }
+    
+    log::info!("FeedItem読み込み完了: {}種類のオブジェクト", feed_items_by_prefix.len());
+    Ok(feed_items_by_prefix)
+  }
+  
+  /// FeedCommentを読み込んでFeedItemIdでグループ化
+  pub fn load_feed_comments(
+    feed_comment_path: &str,
+    target_feed_item_ids: &HashSet<String>,
+  ) -> Result<HashMap<String, Vec<ChatterCommentRecord>>> {
+    let mut comments_by_feed_item: HashMap<String, Vec<ChatterCommentRecord>> = HashMap::new();
+    
+    let mut reader = ReaderBuilder::new().has_headers(true).from_path(feed_comment_path)?;
+    
+    for result in reader.deserialize() {
+      let record: ChatterCommentRecord = result?;
+      
+      if target_feed_item_ids.contains(&record.feed_item_id) {
+        comments_by_feed_item
+          .entry(record.feed_item_id.clone())
+          .or_insert_with(Vec::new)
+          .push(record);
+      }
+    }
+    
+    log::info!("FeedComment読み込み完了: {}件のFeedItemにコメント", comments_by_feed_item.len());
+    Ok(comments_by_feed_item)
+  }
+  
+  /// FeedItemとCommentを結合してProcessableChatterRecordを生成
+  pub fn group_chatter_records(
+    feed_items_by_prefix: HashMap<String, Vec<ChatterFeedItemRecord>>,
+    comments_by_feed_item: HashMap<String, Vec<ChatterCommentRecord>>,
+    found_hubspot_records: &HashMap<String, String>,
+  ) -> Vec<ProcessableChatterRecord> {
+    let mut processable_records = Vec::new();
+    
+    // ParentIdごとにグループ化
+    let mut records_by_parent: HashMap<String, Vec<FeedItemWithComments>> = HashMap::new();
+    
+    for feed_items in feed_items_by_prefix.values() {
+      for feed_item in feed_items {
+        // HubSpotに存在するレコードのみ処理
+        if found_hubspot_records.contains_key(&feed_item.parent_id) {
+          let mut comments = comments_by_feed_item
+            .get(&feed_item.id)
+            .cloned()
+            .unwrap_or_default();
+          
+          // コメントを日付でソート（古い順）
+          comments.sort_by(|a, b| a.created_date.cmp(&b.created_date));
+          
+          records_by_parent
+            .entry(feed_item.parent_id.clone())
+            .or_insert_with(Vec::new)
+            .push(FeedItemWithComments {
+              feed_item: feed_item.clone(),
+              comments,
+            });
+        }
+      }
+    }
+    
+    // ProcessableChatterRecordに変換
+    for (salesforce_id, mut feed_items) in records_by_parent {
+      // FeedItemを日付でソート（古い順）
+      feed_items.sort_by(|a, b| a.feed_item.created_date.cmp(&b.feed_item.created_date));
+      
+      processable_records.push(ProcessableChatterRecord {
+        salesforce_id,
+        feed_items,
+      });
+    }
+    
+    log::info!("処理可能レコード: {}件", processable_records.len());
+    processable_records
   }
 }
