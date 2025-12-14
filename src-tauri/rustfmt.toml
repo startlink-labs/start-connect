@@ -1,0 +1,7 @@
+# Rustfmt設定ファイル
+# https://rust-lang.github.io/rustfmt/
+
+edition = "2021"
+max_width = 100
+tab_spaces = 2
+use_small_heuristics = "Default"

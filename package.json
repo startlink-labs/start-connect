@@ -9,7 +9,10 @@
     "vite": "vite",
     "vite:build": "tsc -b && vite build",
     "lint": "biome check .",
+    "lint:rust": "cd src-tauri && cargo clippy -- -D warnings",
     "format": "biome format --write .",
+    "format:rust": "cd src-tauri && cargo fmt",
+    "format:all": "pnpm format && pnpm format:rust",
     "test": "vitest",
     "test:ui": "vitest --ui",
     "tauri": "tauri"

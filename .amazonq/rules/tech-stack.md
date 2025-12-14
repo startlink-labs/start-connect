@@ -28,6 +28,8 @@
 ### バックエンド
 - **Tauri**: 2.9.6
 - **Rust**: 1.92
+- **フォーマッター**: rustfmt (公式)
+- **リンター**: clippy (公式)
 
 ## CLIコマンド
 
@@ -50,8 +52,11 @@ pnpm vite:build       # Viteのみビルド
 
 ### コード品質
 ```bash
-pnpm lint             # Biomeでリント
-pnpm format           # Biomeでフォーマット
+pnpm lint             # Biomeでリント（フロントエンド）
+pnpm lint:rust        # Clippyでリント（Rust）
+pnpm format           # Biomeでフォーマット（フロントエンド）
+pnpm format:rust      # rustfmtでフォーマット（Rust）
+pnpm format:all       # 全ファイルフォーマット
 pnpm test             # テスト実行
 pnpm test:ui          # Vitestのui起動
 ```
@@ -69,11 +74,17 @@ mise run clean        # クリーンアップ
 
 ## コーディング規約
 
-### Biome設定
+### Biome設定（フロントエンド）
 - **インデント**: 2スペース（TypeScript標準）
 - **クォート**: ダブルクォート
 - **インポート**: 自動整理有効
 - **Tailwind**: ディレクティブサポート有効
+
+### Rust設定（バックエンド）
+- **インデント**: 2スペース
+- **最大行幅**: 100文字
+- **インポート整理**: Crate単位でグループ化
+- **保存時フォーマット**: 自動実行（VSCode）
 
 ### ファイル構成
 - **エイリアス**: `@/` = `./src/`

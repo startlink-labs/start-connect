@@ -6,48 +6,46 @@ mod secure_storage;
 
 use tauri::Manager;
 
-
-
 /// Tauriアプリケーションのメインエントリーポイント
 /// 必要なプラグインとコマンドを登録してアプリケーションを起動
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
-        // 必要なプラグインを初期化
-        .plugin(tauri_plugin_dialog::init()) // ファイルダイアログ
-        .plugin(tauri_plugin_http::init())   // HTTP通信
-        .plugin(tauri_plugin_fs::init())     // ファイルシステム
-        .plugin(tauri_plugin_shell::init())  // シェルコマンド実行
-        // フロントエンドから呼び出し可能なコマンドを登録
-        .invoke_handler(tauri::generate_handler![
-            commands::get_portal_info,
-            commands::login_and_store,
-            commands::logout_and_clear,
-            commands::verify_hubspot_token,
-            commands::get_hubspot_objects,
-            commands::analyze_csv_files,
-            commands::process_file_mapping
-        ])
-        .setup(|app| {
-            // デバッグビルド時のみログプラグインを有効化
-            if cfg!(debug_assertions) {
-                app.handle().plugin(
-                    tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Debug)
-                        .build(),
-                )?;
-            }
-            
-            // 開発時のみdevtoolsを表示
-            #[cfg(debug_assertions)]
-            {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.open_devtools();
-                }
-            }
+  tauri::Builder::default()
+    // 必要なプラグインを初期化
+    .plugin(tauri_plugin_dialog::init()) // ファイルダイアログ
+    .plugin(tauri_plugin_http::init()) // HTTP通信
+    .plugin(tauri_plugin_fs::init()) // ファイルシステム
+    .plugin(tauri_plugin_shell::init()) // シェルコマンド実行
+    // フロントエンドから呼び出し可能なコマンドを登録
+    .invoke_handler(tauri::generate_handler![
+      commands::get_portal_info,
+      commands::login_and_store,
+      commands::logout_and_clear,
+      commands::verify_hubspot_token,
+      commands::get_hubspot_objects,
+      commands::analyze_csv_files,
+      commands::process_file_mapping
+    ])
+    .setup(|app| {
+      // デバッグビルド時のみログプラグインを有効化
+      if cfg!(debug_assertions) {
+        app.handle().plugin(
+          tauri_plugin_log::Builder::default()
+            .level(log::LevelFilter::Debug)
+            .build(),
+        )?;
+      }
 
-            Ok(())
-        })
-        .run(tauri::generate_context!())
-        .expect("Tauriアプリケーションの実行中にエラーが発生しました");
+      // 開発時のみdevtoolsを表示
+      #[cfg(debug_assertions)]
+      {
+        if let Some(window) = app.get_webview_window("main") {
+          window.open_devtools();
+        }
+      }
+
+      Ok(())
+    })
+    .run(tauri::generate_context!())
+    .expect("Tauriアプリケーションの実行中にエラーが発生しました");
 }

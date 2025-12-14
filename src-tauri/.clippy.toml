@@ -1,0 +1,5 @@
+# Clippy設定ファイル
+# https://doc.rust-lang.org/clippy/
+
+# 厳格なリントを有効化
+cognitive-complexity-threshold = 30
