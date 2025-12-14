@@ -1,5 +1,16 @@
+import { AlertTriangle, Info, Settings2 } from "lucide-react";
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
+import { PortalIdConfirmInput } from "@/components/PortalIdConfirmInput";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,6 +21,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  DEFAULT_CUSTOM_OBJECT_PROPERTY,
+  DEFAULT_SALESFORCE_PROPERTIES,
+} from "@/constants/salesforce";
 import type { ObjectGroup } from "@/hooks/useCsvAnalysis";
 import { FixedActionBar } from "../FixedActionBar";
 
@@ -18,6 +40,7 @@ interface MappingConfigStepProps {
   objectMapping: Record<string, string>;
   salesforceProperties: Record<string, string>;
   hubspotObjectOptions: Array<{ value: string; label: string }>;
+  hubspotPortalId: string;
   isMapping: boolean;
   onMappingChange: (prefix: string, hubspotObject: string) => void;
   onPropertyChange: (prefix: string, property: string) => void;
@@ -30,6 +53,7 @@ export const MappingConfigStep = ({
   objectMapping,
   salesforceProperties,
   hubspotObjectOptions,
+  hubspotPortalId,
   isMapping,
   onMappingChange,
   onPropertyChange,
@@ -37,58 +61,102 @@ export const MappingConfigStep = ({
   onBack,
 }: MappingConfigStepProps) => {
   const [showOnlyMapped, setShowOnlyMapped] = useState(false);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [portalIdInput, setPortalIdInput] = useState("");
+
+  const mappedCount = Object.values(objectMapping).filter(
+    (v) => v !== "none",
+  ).length;
+
+  const handleConfirmExecute = () => {
+    setShowConfirmDialog(false);
+    setPortalIdInput("");
+    onExecute();
+  };
 
   return (
     <div className="space-y-8 pb-24">
-      <Card className="border border-gray-200 shadow-sm rounded-lg">
+      <Card className="border shadow-sm rounded-lg">
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="text-xl">
-                オブジェクトマッピング設定
+              <CardTitle className="flex items-center gap-2 text-xl">
+                <Settings2 className="h-5 w-5 text-primary" />
+                マッピング設定
               </CardTitle>
-              <p className="text-gray-600 text-sm mt-1">
+              <p className="text-muted-foreground text-sm mt-1">
                 ContentDocumentLink.csvからオブジェクトごとの関連添付ファイルレコード数を取得しました。
                 <br />
                 マッピングするオブジェクトを選択してください。
               </p>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowOnlyMapped(!showOnlyMapped)}
-            >
-              {showOnlyMapped ? "全て表示" : "マッピング対象のみ"}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Switch
+                id="show-mapped"
+                checked={showOnlyMapped}
+                onCheckedChange={setShowOnlyMapped}
+              />
+              <label
+                htmlFor="show-mapped"
+                className="text-sm font-medium cursor-pointer"
+              >
+                マッピング済のみ
+              </label>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          {objectGroups
-            .filter(
-              (group) =>
-                !showOnlyMapped || objectMapping[group.prefix] !== "none",
-            )
-            .map((group) => (
-              <div
-                key={group.prefix}
-                className="bg-gray-50 rounded-md p-4 space-y-3"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="font-mono text-sm bg-blue-600 text-white px-3 py-1 rounded-full">
-                    {group.prefix}
-                  </span>
-                  <span className="font-medium text-gray-900">
-                    {group.objectName}
-                  </span>
-                  <span className="text-sm text-gray-500 bg-white px-2 py-1 rounded">
-                    {group.count.toLocaleString()}件
-                  </span>
-                </div>
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div>
-                    <Label className="text-sm font-medium text-gray-700 mb-2 block">
-                      HubSpotオブジェクト
-                    </Label>
+          <TooltipProvider>
+            <div className="grid md:grid-cols-2 gap-4 pb-2 border-b">
+              <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                マッピングするHubSpotオブジェクト
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="h-3.5 w-3.5 cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="text-xs">
+                      Salesforceオブジェクトに対応するHubSpotオブジェクトを選択
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                HubSpotプロパティ内部値
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="h-3.5 w-3.5 cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="text-xs">
+                      SalesforceのIDが格納されるHubSpotプロパティの内部値
+                      <br />
+                      このプロパティでHubSpotのレコードの存在確認を行います。
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+            </div>
+            {objectGroups
+              .filter(
+                (group) =>
+                  !showOnlyMapped || objectMapping[group.prefix] !== "none",
+              )
+              .map((group) => (
+                <div
+                  key={group.prefix}
+                  className="bg-muted/30 rounded-md p-4 space-y-3"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="font-mono text-sm bg-primary text-primary-foreground px-3 py-1 rounded-full">
+                      {group.prefix}
+                    </span>
+                    <span className="font-medium">{group.objectName}</span>
+                    <span className="text-sm text-muted-foreground bg-muted px-2 py-1 rounded">
+                      {group.count.toLocaleString()}件
+                    </span>
+                  </div>
+                  <div className="grid md:grid-cols-2 gap-4">
                     <Select
                       value={objectMapping[group.prefix] || ""}
                       onValueChange={(value) =>
@@ -106,27 +174,77 @@ export const MappingConfigStep = ({
                         ))}
                       </SelectContent>
                     </Select>
-                  </div>
-                  {objectMapping[group.prefix] !== "none" && (
-                    <div>
-                      <Label className="text-sm font-medium text-gray-700 mb-2 block">
-                        Salesforceプロパティ名
-                      </Label>
+                    {objectMapping[group.prefix] !== "none" ? (
                       <Input
                         value={salesforceProperties[group.prefix] || ""}
                         onChange={(e) =>
                           onPropertyChange(group.prefix, e.target.value)
                         }
-                        placeholder="salesforce_id"
+                        placeholder={
+                          (objectMapping[group.prefix] &&
+                            DEFAULT_SALESFORCE_PROPERTIES[
+                              objectMapping[group.prefix]
+                            ]) ||
+                          DEFAULT_CUSTOM_OBJECT_PROPERTY
+                        }
                         className="h-10"
                       />
-                    </div>
-                  )}
+                    ) : (
+                      <div className="h-10" />
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+          </TooltipProvider>
         </CardContent>
       </Card>
+
+      <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              ファイルマッピング実行の確認
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-4">
+              <p>以下の処理を実行します：</p>
+              <ol className="list-decimal list-inside space-y-1 text-sm">
+                <li>両CSVからマッピング対象レコードを抽出</li>
+                <li>HubSpotプロパティでレコード存在確認</li>
+                <li>CSVのVersionData(Base64)からファイルをアップロード</li>
+                <li>HubSpotレコードにノートを作成</li>
+                <li>処理結果CSVを出力</li>
+              </ol>
+              <div className="space-y-2 pt-2">
+                <p className="text-sm font-medium">
+                  マッピング対象: {mappedCount}件
+                </p>
+                <div className="space-y-2">
+                  <Label htmlFor="portal-id-confirm" className="text-sm">
+                    確認のため、HubSpotポータルIDを入力してください
+                  </Label>
+                  <PortalIdConfirmInput
+                    expectedValue={hubspotPortalId}
+                    value={portalIdInput}
+                    onChange={setPortalIdInput}
+                  />
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setPortalIdInput("")}>
+              キャンセル
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmExecute}
+              disabled={portalIdInput !== hubspotPortalId}
+            >
+              実行する
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <FixedActionBar
         leftButton={{
@@ -135,13 +253,12 @@ export const MappingConfigStep = ({
         }}
         rightButton={{
           label: "ファイルマッピング実行",
-          onClick: onExecute,
+          onClick: () => setShowConfirmDialog(true),
           disabled:
             isMapping ||
             Object.values(objectMapping).every((v) => v === "none"),
           loading: isMapping,
         }}
-        centerContent={`マッピング対象: ${Object.values(objectMapping).filter((v) => v !== "none").length}件`}
       />
     </div>
   );

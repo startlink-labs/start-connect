@@ -13,14 +13,14 @@ export function Header() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-14 relative">
           {centerMessage && (
-            <div className="absolute left-1/2 transform -translate-x-1/2 text-sm font-medium text-blue-600">
+            <div className="absolute left-1/2 transform -translate-x-1/2 text-sm font-medium text-foreground">
               {centerMessage}
             </div>
           )}
           <div className="flex items-center space-x-3">
             {portalInfo?.portal_id && portalInfo?.ui_domain && (
               <div className="flex items-center space-x-2">
-                <div className="w-2 h-2 bg-green-500 rounded-full" />
+                <div className="w-2 h-2 bg-chart-2 rounded-full" />
                 <button
                   type="button"
                   onClick={() =>
@@ -28,7 +28,7 @@ export function Header() {
                       `https://${portalInfo.ui_domain}/settings/${portalInfo.portal_id}/account-defaults/general`,
                     )
                   }
-                  className="text-sm text-gray-600 hover:text-gray-900 underline decoration-gray-400 hover:decoration-gray-600 transition-colors"
+                  className="text-sm text-muted-foreground hover:text-foreground underline decoration-muted-foreground/40 hover:decoration-foreground/60 transition-colors"
                 >
                   Portal: {portalInfo.portal_id}
                 </button>

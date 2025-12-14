@@ -16,7 +16,7 @@ export const Route = createFileRoute("/file-transfer")({
 });
 
 function FileTransfer() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, portalInfo } = useAuth();
   const { setCenterMessage } = useHeaderStore();
   const { objects: hubspotObjects } = useHubSpotObjects();
   const { isProcessing, objectGroups, analyzeFiles } = useCsvAnalysis();
@@ -24,9 +24,9 @@ function FileTransfer() {
     useFileMapping();
 
   const [step, setStep] = useState<"files" | "mapping" | "download">("files");
+  const [downloadCompleted, setDownloadCompleted] = useState(false);
   const [contentVersionPath, setContentVersionPath] = useState("");
   const [contentDocumentLinkPath, setContentDocumentLinkPath] = useState("");
-  const [contentVersionFolderPath, setContentVersionFolderPath] = useState("");
   const [objectMapping, setObjectMapping] = useState<Record<string, string>>(
     {},
   );
@@ -84,7 +84,6 @@ function FileTransfer() {
     await processFileMapping(
       contentVersionPath,
       contentDocumentLinkPath,
-      contentVersionFolderPath,
       mappings,
     );
     setStep("download");
@@ -96,9 +95,9 @@ function FileTransfer() {
       invoke("cleanup_temp_csv", { tempPath: resultCsvPath }).catch(() => {});
     }
     setStep("files");
+    setDownloadCompleted(false);
     setContentVersionPath("");
     setContentDocumentLinkPath("");
-    setContentVersionFolderPath("");
     setObjectMapping({});
     setSalesforceProperties({});
     reset();
@@ -107,17 +106,19 @@ function FileTransfer() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
       <div className="max-w-4xl mx-auto">
-        <StepProgress currentStep={step} className="mb-8" />
+        <StepProgress
+          currentStep={step}
+          downloadCompleted={downloadCompleted}
+          className="mb-8"
+        />
 
         {step === "files" && (
           <FileSelectionStep
             contentVersionPath={contentVersionPath}
             contentDocumentLinkPath={contentDocumentLinkPath}
-            contentVersionFolderPath={contentVersionFolderPath}
             isProcessing={isProcessing}
             onContentVersionPathChange={setContentVersionPath}
             onContentDocumentLinkPathChange={setContentDocumentLinkPath}
-            onContentVersionFolderPathChange={setContentVersionFolderPath}
             onAnalyze={handleAnalyze}
             onBack={() => window.history.back()}
           />
@@ -129,6 +130,7 @@ function FileTransfer() {
             objectMapping={objectMapping}
             salesforceProperties={salesforceProperties}
             hubspotObjectOptions={hubspotObjectOptions}
+            hubspotPortalId={String(portalInfo?.portal_id || "")}
             isMapping={isMapping}
             onMappingChange={(prefix, value) =>
               setObjectMapping((prev) => ({ ...prev, [prefix]: value }))
@@ -145,7 +147,9 @@ function FileTransfer() {
           <ResultSummaryStep
             summaries={summaries}
             resultCsvPath={resultCsvPath}
+            downloadCompleted={downloadCompleted}
             onReset={handleReset}
+            onDownloadComplete={() => setDownloadCompleted(true)}
           />
         )}
       </div>

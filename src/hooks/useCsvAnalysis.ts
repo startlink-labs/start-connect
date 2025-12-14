@@ -2,7 +2,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { useState } from "react";
 import { toast } from "sonner";
 import {
+  DEFAULT_CUSTOM_OBJECT_PROPERTY,
   DEFAULT_MAPPING,
+  DEFAULT_SALESFORCE_PROPERTIES,
   MAPPING_PRIORITY,
   SALESFORCE_OBJECTS,
 } from "@/constants/salesforce";
@@ -60,7 +62,11 @@ export const useCsvAnalysis = () => {
 
       groups.forEach((group) => {
         initialMapping[group.prefix] = DEFAULT_MAPPING[group.prefix] || "none";
-        initialProperties[group.prefix] = "salesforce_id";
+        const mappedObject = DEFAULT_MAPPING[group.prefix];
+        initialProperties[group.prefix] =
+          mappedObject && DEFAULT_SALESFORCE_PROPERTIES[mappedObject]
+            ? DEFAULT_SALESFORCE_PROPERTIES[mappedObject]
+            : DEFAULT_CUSTOM_OBJECT_PROPERTY;
       });
 
       return { groups, initialMapping, initialProperties };

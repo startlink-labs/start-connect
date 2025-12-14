@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
+import { Download } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { ObjectSummary } from "@/hooks/useFileMapping";
@@ -8,13 +9,17 @@ import { FixedActionBar } from "../FixedActionBar";
 interface ResultSummaryStepProps {
   summaries: ObjectSummary[];
   resultCsvPath: string | null;
+  downloadCompleted: boolean;
   onReset: () => void;
+  onDownloadComplete?: () => void;
 }
 
 export const ResultSummaryStep = ({
   summaries,
   resultCsvPath,
+  downloadCompleted,
   onReset,
+  onDownloadComplete,
 }: ResultSummaryStepProps) => {
   const handleDownload = async () => {
     if (!resultCsvPath) {
@@ -34,6 +39,7 @@ export const ResultSummaryStep = ({
           savePath,
         });
         toast.success("CSVファイルを保存しました");
+        onDownloadComplete?.();
       } catch (error) {
         toast.error(`保存エラー: ${error}`);
       }
@@ -42,10 +48,13 @@ export const ResultSummaryStep = ({
 
   return (
     <div className="space-y-8 pb-24">
-      <Card className="border border-gray-200 shadow-sm rounded-lg">
+      <Card className="border shadow-sm rounded-lg">
         <CardHeader>
-          <CardTitle className="text-xl">処理結果</CardTitle>
-          <p className="text-gray-600 text-sm mt-1">
+          <CardTitle className="flex items-center gap-2 text-xl">
+            <Download className="h-5 w-5 text-primary" />
+            結果サマリー
+          </CardTitle>
+          <p className="text-muted-foreground text-sm mt-1">
             オブジェクトごとの処理結果を表示しています
           </p>
         </CardHeader>
@@ -58,45 +67,53 @@ export const ResultSummaryStep = ({
             return (
               <div
                 key={summary.prefix}
-                className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-100"
+                className="bg-muted/30 rounded-lg p-4 border"
               >
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-3">
-                    <span className="font-mono text-sm bg-blue-600 text-white px-3 py-1.5 rounded-full font-medium">
+                    <span className="font-mono text-sm bg-primary text-primary-foreground px-3 py-1.5 rounded-full font-medium">
                       {summary.prefix}
                     </span>
-                    <span className="font-semibold text-gray-900">
+                    <span className="font-semibold">
                       {summary.hubspot_object}
                     </span>
                   </div>
-                  <span className="text-sm text-gray-600 font-medium">
+                  <span className="text-sm text-muted-foreground font-medium">
                     合計: {total}件
                   </span>
                 </div>
                 <div className="grid grid-cols-4 gap-3">
-                  <div className="bg-white rounded-md p-3 text-center border border-green-200">
-                    <div className="text-2xl font-bold text-green-600">
+                  <div className="bg-background rounded-md p-3 text-center border border-primary/20">
+                    <div className="text-2xl font-bold text-primary">
                       {summary.success_count}
                     </div>
-                    <div className="text-xs text-gray-600 mt-1">成功</div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      成功
+                    </div>
                   </div>
-                  <div className="bg-white rounded-md p-3 text-center border border-yellow-200">
-                    <div className="text-2xl font-bold text-yellow-600">
+                  <div className="bg-background rounded-md p-3 text-center border border-secondary/20">
+                    <div className="text-2xl font-bold text-secondary">
                       {summary.skipped_count}
                     </div>
-                    <div className="text-xs text-gray-600 mt-1">スキップ</div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      スキップ
+                    </div>
                   </div>
-                  <div className="bg-white rounded-md p-3 text-center border border-red-200">
-                    <div className="text-2xl font-bold text-red-600">
+                  <div className="bg-background rounded-md p-3 text-center border border-destructive/20">
+                    <div className="text-2xl font-bold text-destructive">
                       {summary.error_count}
                     </div>
-                    <div className="text-xs text-gray-600 mt-1">エラー</div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      エラー
+                    </div>
                   </div>
-                  <div className="bg-white rounded-md p-3 text-center border border-blue-200">
-                    <div className="text-2xl font-bold text-blue-600">
+                  <div className="bg-background rounded-md p-3 text-center border border-accent/20">
+                    <div className="text-2xl font-bold text-accent">
                       {summary.uploaded_files}
                     </div>
-                    <div className="text-xs text-gray-600 mt-1">ファイル</div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      アップロードファイル
+                    </div>
                   </div>
                 </div>
               </div>
@@ -111,10 +128,10 @@ export const ResultSummaryStep = ({
           onClick: onReset,
         }}
         rightButton={{
-          label: "CSVダウンロード",
+          label: downloadCompleted ? "ダウンロード済み" : "CSVダウンロード",
           onClick: handleDownload,
+          disabled: downloadCompleted,
         }}
-        centerContent="処理完了"
       />
     </div>
   );

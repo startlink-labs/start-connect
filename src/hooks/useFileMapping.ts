@@ -29,17 +29,16 @@ export const useFileMapping = () => {
   const processFileMapping = async (
     contentVersionPath: string,
     contentDocumentLinkPath: string,
-    contentVersionFolderPath: string,
     objectMappings: Record<string, ObjectMapping>,
   ) => {
     setIsMapping(true);
-    toast.loading("ファイルマッピングを開始中...");
+    toast.loading("ファイルマッピングを実行中...");
 
     try {
       const result = (await invoke("process_file_mapping", {
         contentVersionPath,
         contentDocumentLinkPath,
-        contentVersionFolderPath,
+        contentVersionFolderPath: "",
         objectMappings,
       })) as FileMappingResult;
 

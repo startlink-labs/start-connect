@@ -28,5 +28,16 @@ export const DEFAULT_MAPPING: Record<string, string> = {
   "003": "contacts",
   "006": "deals",
   "500": "tickets",
-  "00Q": "contacts",
+  "00Q": "leads",
 };
+
+// HubSpotオブジェクトごとのデフォルトSalesforceプロパティ
+export const DEFAULT_SALESFORCE_PROPERTIES: Record<string, string> = {
+  contacts: "salesforcecontactid",
+  leads: "salesforceleadid",
+  deals: "hs_salesforceopportunityid",
+  companies: "salesforceaccountid",
+  tickets: "salesforcecaseid",
+};
+
+export const DEFAULT_CUSTOM_OBJECT_PROPERTY = "salesforceobjectid";

@@ -52,14 +52,16 @@ export function FileDropzone({
 
   return (
     <div className="space-y-2">
-      <div className="text-sm font-medium text-gray-700">{label}</div>
+      <div className="text-sm font-medium text-foreground">{label}</div>
       <button
         type="button"
         className={cn(
           "relative border-2 border-dashed rounded-md p-6 transition-colors cursor-pointer w-full text-left",
-          isDragOver && "border-blue-400 bg-blue-50",
-          !isDragOver && !value && "border-gray-300 hover:border-gray-400",
-          !isDragOver && value && "border-green-300 bg-green-50",
+          isDragOver && "border-primary bg-primary/10",
+          !isDragOver &&
+            !value &&
+            "border-muted-foreground/30 hover:border-muted-foreground/50",
+          !isDragOver && value && "border-primary bg-primary/10",
           disabled && "opacity-50 cursor-not-allowed",
         )}
         onClick={!disabled ? selectFile : undefined}
@@ -77,10 +79,12 @@ export function FileDropzone({
         {value ? (
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <File className="h-8 w-8 text-green-600" />
+              <File className="h-8 w-8 text-primary" />
               <div>
-                <p className="text-sm font-medium text-gray-900">{fileName}</p>
-                <p className="text-xs text-gray-500">選択済み</p>
+                <p className="text-sm font-medium text-foreground">
+                  {fileName}
+                </p>
+                <p className="text-xs text-muted-foreground">選択済み</p>
               </div>
             </div>
             <Button
@@ -97,12 +101,14 @@ export function FileDropzone({
           </div>
         ) : (
           <div className="text-center">
-            <Upload className="mx-auto h-12 w-12 text-gray-400" />
+            <Upload className="mx-auto h-12 w-12 text-muted-foreground" />
             <div className="mt-4">
-              <p className="text-sm font-medium text-gray-900">
+              <p className="text-sm font-medium text-foreground">
                 クリックしてファイルを選択
               </p>
-              <p className="text-xs text-gray-500 mt-1">{placeholder}</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {placeholder}
+              </p>
             </div>
           </div>
         )}
