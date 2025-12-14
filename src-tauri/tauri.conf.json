@@ -37,7 +37,8 @@
             "fs:allow-exists",
             "shell:allow-open",
             "core:event:default",
-            "deep-link:default"
+            "deep-link:default",
+            "updater:default"
           ]
         }
       ]
@@ -53,7 +54,8 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "createUpdaterArtifacts": true
   },
   "plugins": {
     "deep-link": {
@@ -61,6 +63,12 @@
       "desktop": {
         "schemes": ["sfhsfiletrans"]
       }
+    },
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDgxOUNFNjg0OEU3NDM3QkMKUldTOE4zU09oT2FjZ1d3S2pvRzJMSWdpZUZhZGx0QnluM0IxU2haSGdWTCttblVBUktVYnpUZGMK",
+      "endpoints": [
+        "https://github.com/{{owner}}/{{repo}}/releases/latest/download/latest.json"
+      ]
     }
   }
 }

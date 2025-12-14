@@ -27,6 +27,8 @@ pub fn run() {
 
   builder
     // 必要なプラグインを初期化
+    .plugin(tauri_plugin_updater::Builder::new().build()) // 自動更新
+    .plugin(tauri_plugin_process::init()) // プロセス管理
     .plugin(tauri_plugin_dialog::init()) // ファイルダイアログ
     .plugin(tauri_plugin_http::init()) // HTTP通信
     .plugin(tauri_plugin_fs::init()) // ファイルシステム

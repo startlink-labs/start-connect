@@ -29,8 +29,6 @@ export function PortalIdConfirmInput({
     onChange(validated);
   };
 
-  const _chars = expectedValue.split("");
-
   return (
     <div className="relative">
       <Input

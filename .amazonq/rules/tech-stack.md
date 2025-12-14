@@ -100,5 +100,5 @@ mise run clean        # クリーンアップ
 - **Tauriコマンド**: フロントエンドとバックエンドを同時に起動するため `pnpm dev` を使用
 - **AIのコマンド実行**: pnpm、node、npm、cargo、rustc等のコマンドを実行する際は、必ず `mise exec -- <command>` を使用すること（例: `mise exec -- pnpm install`、`mise exec -- pnpm dev`）
 - **コード変更後の必須チェック**: コード変更後は必ず以下を実行
-  1. `mise exec -- pnpm exec tsc --noEmit` (型チェック)
-  2. `mise exec -- pnpm exec biome check --write --unsafe .` (リント・フォーマット自動修正)
+  1. フロントエンド: `mise exec -- pnpm exec tsc --noEmit && mise exec -- pnpm exec biome check --write --unsafe .`
+  2. Rust: `cd src-tauri && mise exec -- cargo fmt && mise exec -- cargo clippy -- -D warnings`

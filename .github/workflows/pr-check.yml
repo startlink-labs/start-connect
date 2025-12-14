@@ -1,0 +1,53 @@
+name: PR Check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  check:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup mise
+        uses: jdx/mise-action@v2
+        with:
+          install: true
+
+      - name: Install Rust components
+        run: rustup component add rustfmt clippy
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Install frontend dependencies
+        run: mise exec -- pnpm install
+
+      - name: Run all checks
+        run: |
+          mise exec -- pnpm exec tsc --noEmit
+          mise exec -- pnpm exec biome check .
+          cd src-tauri
+          mise exec -- cargo fmt --check
+          mise exec -- cargo clippy -- -D warnings
+          mise exec -- cargo test
+
+      - name: Comment PR
+        uses: actions/github-script@v7
+        if: always()
+        with:
+          script: |
+            const status = '${{ job.status }}';
+            const body = status === 'success' 
+              ? '✅ All checks passed!' 
+              : '❌ Some checks failed. Please review the logs.';
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
