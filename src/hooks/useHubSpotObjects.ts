@@ -8,7 +8,6 @@ interface HubSpotObject {
   label: string;
 }
 
-
 export function useHubSpotObjects() {
   const { isAuthenticated } = useAuth();
   const [objects, setObjects] = useState<HubSpotObject[]>([]);
@@ -24,7 +23,7 @@ export function useHubSpotObjects() {
     fetchedRef.current = true;
 
     try {
-      const objects = await invoke('get_hubspot_objects') as HubSpotObject[];
+      const objects = (await invoke("get_hubspot_objects")) as HubSpotObject[];
       setObjects(objects);
     } catch (err) {
       setError(err instanceof Error ? err.message : "エラーが発生しました");

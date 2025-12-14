@@ -1,52 +1,54 @@
-import { useState } from 'react'
-import { Upload, File, X } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
-import { toast } from 'sonner'
+import { useState } from "react";
+import { Upload, File, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 interface FileDropzoneProps {
-  onFileSelect: (path: string) => void
-  value?: string
-  placeholder?: string
-  disabled?: boolean
-  accept?: string
-  label: string
+  onFileSelect: (path: string) => void;
+  value?: string;
+  placeholder?: string;
+  disabled?: boolean;
+  accept?: string;
+  label: string;
 }
 
-export function FileDropzone({ 
-  onFileSelect, 
-  value, 
-  placeholder = "ファイルを選択またはドロップ", 
+export function FileDropzone({
+  onFileSelect,
+  value,
+  placeholder = "ファイルを選択またはドロップ",
   disabled = false,
-  label 
+  label,
 }: FileDropzoneProps) {
-  const [isDragOver, setIsDragOver] = useState(false)
+  const [isDragOver, setIsDragOver] = useState(false);
 
   const selectFile = async () => {
     try {
-      const { open } = await import('@tauri-apps/plugin-dialog')
+      const { open } = await import("@tauri-apps/plugin-dialog");
       const selected = await open({
         multiple: false,
-        filters: [{
-          name: 'CSV',
-          extensions: ['csv']
-        }]
-      })
+        filters: [
+          {
+            name: "CSV",
+            extensions: ["csv"],
+          },
+        ],
+      });
       if (selected) {
-        onFileSelect(selected as string)
-        toast.success(`ファイルが選択されました: ${selected.split('/').pop()}`)
+        onFileSelect(selected as string);
+        toast.success(`ファイルが選択されました: ${selected.split("/").pop()}`);
       }
     } catch (error) {
-      console.error('ファイル選択エラー:', error)
-      toast.error('ファイル選択に失敗しました')
+      console.error("ファイル選択エラー:", error);
+      toast.error("ファイル選択に失敗しました");
     }
-  }
+  };
 
   const clearFile = () => {
-    onFileSelect('')
-  }
+    onFileSelect("");
+  };
 
-  const fileName = value ? value.split('/').pop() || value : null
+  const fileName = value ? value.split("/").pop() || value : null;
 
   return (
     <div className="space-y-2">
@@ -57,17 +59,17 @@ export function FileDropzone({
           isDragOver && "border-blue-400 bg-blue-50",
           !isDragOver && !value && "border-gray-300 hover:border-gray-400",
           !isDragOver && value && "border-green-300 bg-green-50",
-          disabled && "opacity-50 cursor-not-allowed"
+          disabled && "opacity-50 cursor-not-allowed",
         )}
         onClick={!disabled ? selectFile : undefined}
         onDragOver={(e) => {
-          e.preventDefault()
-          if (!disabled) setIsDragOver(true)
+          e.preventDefault();
+          if (!disabled) setIsDragOver(true);
         }}
         onDragLeave={() => setIsDragOver(false)}
         onDrop={(e) => {
-          e.preventDefault()
-          setIsDragOver(false)
+          e.preventDefault();
+          setIsDragOver(false);
           // Note: Tauri doesn't support file drop in web context
         }}
       >
@@ -84,8 +86,8 @@ export function FileDropzone({
               variant="ghost"
               size="sm"
               onClick={(e) => {
-                e.stopPropagation()
-                clearFile()
+                e.stopPropagation();
+                clearFile();
               }}
               disabled={disabled}
             >
@@ -105,5 +107,5 @@ export function FileDropzone({
         )}
       </div>
     </div>
-  )
+  );
 }

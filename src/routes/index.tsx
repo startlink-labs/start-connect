@@ -2,15 +2,15 @@ import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { useAuth } from "../hooks/useAuth";
 
 export const Route = createFileRoute("/")({
-	component: Index,
+  component: Index,
 });
 
 function Index() {
-	const { isAuthenticated } = useAuth();
+  const { isAuthenticated } = useAuth();
 
-	if (!isAuthenticated) {
-		return <Navigate to="/login" />;
-	}
+  if (!isAuthenticated) {
+    return <Navigate to="/login" />;
+  }
 
-	return <Navigate to="/dashboard" />;
+  return <Navigate to="/dashboard" />;
 }
