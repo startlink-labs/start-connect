@@ -35,7 +35,7 @@ function FileTransfer() {
   >({});
 
   useEffect(() => {
-    setCenterMessage("ファイルマッピング");
+    setCenterMessage("ファイル移行");
     return () => setCenterMessage(null);
   }, [setCenterMessage]);
 

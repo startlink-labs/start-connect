@@ -34,7 +34,7 @@ function Dashboard() {
                   <div className="p-3 bg-primary/10 rounded-lg group-hover:bg-primary/20 transition-colors">
                     <FileText className="h-6 w-6 text-primary" />
                   </div>
-                  <CardTitle className="text-2xl">ファイルマッピング</CardTitle>
+                  <CardTitle className="text-2xl">ファイル移行</CardTitle>
                 </div>
               </CardHeader>
               <CardContent className="flex flex-col flex-1 space-y-4">

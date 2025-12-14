@@ -32,7 +32,7 @@ export const useFileMapping = () => {
     objectMappings: Record<string, ObjectMapping>,
   ) => {
     setIsMapping(true);
-    toast.loading("ファイルマッピングを実行中...");
+    toast.loading("ファイル移行中...");
 
     try {
       const result = (await invoke("process_file_mapping", {

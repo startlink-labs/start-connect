@@ -184,7 +184,7 @@ export const MappingConfigStep = ({
       <ExecutionConfirmDialog
         open={showConfirmDialog}
         onOpenChange={setShowConfirmDialog}
-        title="ファイルマッピング実行の確認"
+        title="ファイル移行実行の確認"
         steps={[
           "両CSVからマッピング対象レコードを抽出",
           "HubSpotプロパティでレコード存在確認",
@@ -203,7 +203,7 @@ export const MappingConfigStep = ({
           onClick: onBack,
         }}
         rightButton={{
-          label: "ファイルマッピング実行",
+          label: "ファイル移行実行",
           onClick: () => setShowConfirmDialog(true),
           disabled:
             isMapping ||
