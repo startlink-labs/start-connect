@@ -91,6 +91,7 @@ pub struct ChatterFeedItemRecord {
 #[derive(Debug, Deserialize, Clone)]
 pub struct ChatterCommentRecord {
   #[serde(rename = "Id")]
+  #[allow(dead_code)]
   pub id: String,
   #[serde(rename = "FeedItemId")]
   pub feed_item_id: String,
@@ -169,6 +170,7 @@ impl CsvProcessor {
   ///
   /// # 戻り値
   /// (ファイル情報マップ, フィルタリング後のレコード情報)
+  #[allow(clippy::type_complexity)]
   pub fn get_file_info_and_filter_records(
     csv_path: &str,
     target_records: &HashMap<String, Vec<(String, String)>>,
@@ -374,53 +376,63 @@ impl CsvProcessor {
     object_mappings: &HashMap<String, ObjectMapping>,
   ) -> Result<HashMap<String, Vec<ChatterFeedItemRecord>>> {
     let mut feed_items_by_prefix: HashMap<String, Vec<ChatterFeedItemRecord>> = HashMap::new();
-    
+
     // FeedItem.csvを読み込み
-    let mut reader = ReaderBuilder::new().has_headers(true).from_path(feed_item_path)?;
-    
+    let mut reader = ReaderBuilder::new()
+      .has_headers(true)
+      .from_path(feed_item_path)?;
+
     for result in reader.deserialize() {
       let record: ChatterFeedItemRecord = result?;
-      
+
       if record.parent_id.len() >= 3 {
         let prefix = &record.parent_id[..3];
-        
+
         if object_mappings.contains_key(prefix) {
           feed_items_by_prefix
             .entry(prefix.to_string())
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(record);
         }
       }
     }
-    
-    log::info!("FeedItem読み込み完了: {}種類のオブジェクト", feed_items_by_prefix.len());
+
+    log::info!(
+      "FeedItem読み込み完了: {}種類のオブジェクト",
+      feed_items_by_prefix.len()
+    );
     Ok(feed_items_by_prefix)
   }
-  
+
   /// FeedCommentを読み込んでFeedItemIdでグループ化
   pub fn load_feed_comments(
     feed_comment_path: &str,
     target_feed_item_ids: &HashSet<String>,
   ) -> Result<HashMap<String, Vec<ChatterCommentRecord>>> {
     let mut comments_by_feed_item: HashMap<String, Vec<ChatterCommentRecord>> = HashMap::new();
-    
-    let mut reader = ReaderBuilder::new().has_headers(true).from_path(feed_comment_path)?;
-    
+
+    let mut reader = ReaderBuilder::new()
+      .has_headers(true)
+      .from_path(feed_comment_path)?;
+
     for result in reader.deserialize() {
       let record: ChatterCommentRecord = result?;
-      
+
       if target_feed_item_ids.contains(&record.feed_item_id) {
         comments_by_feed_item
           .entry(record.feed_item_id.clone())
-          .or_insert_with(Vec::new)
+          .or_default()
           .push(record);
       }
     }
-    
-    log::info!("FeedComment読み込み完了: {}件のFeedItemにコメント", comments_by_feed_item.len());
+
+    log::info!(
+      "FeedComment読み込み完了: {}件のFeedItemにコメント",
+      comments_by_feed_item.len()
+    );
     Ok(comments_by_feed_item)
   }
-  
+
   /// FeedItemとCommentを結合してProcessableChatterRecordを生成
   pub fn group_chatter_records(
     feed_items_by_prefix: HashMap<String, Vec<ChatterFeedItemRecord>>,
@@ -428,10 +440,10 @@ impl CsvProcessor {
     found_hubspot_records: &HashMap<String, String>,
   ) -> Vec<ProcessableChatterRecord> {
     let mut processable_records = Vec::new();
-    
+
     // ParentIdごとにグループ化
     let mut records_by_parent: HashMap<String, Vec<FeedItemWithComments>> = HashMap::new();
-    
+
     for feed_items in feed_items_by_prefix.values() {
       for feed_item in feed_items {
         // HubSpotに存在するレコードのみ処理
@@ -440,13 +452,13 @@ impl CsvProcessor {
             .get(&feed_item.id)
             .cloned()
             .unwrap_or_default();
-          
+
           // コメントを日付でソート（古い順）
           comments.sort_by(|a, b| a.created_date.cmp(&b.created_date));
-          
+
           records_by_parent
             .entry(feed_item.parent_id.clone())
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(FeedItemWithComments {
               feed_item: feed_item.clone(),
               comments,
@@ -454,18 +466,18 @@ impl CsvProcessor {
         }
       }
     }
-    
+
     // ProcessableChatterRecordに変換
     for (salesforce_id, mut feed_items) in records_by_parent {
       // FeedItemを日付でソート（古い順）
       feed_items.sort_by(|a, b| a.feed_item.created_date.cmp(&b.feed_item.created_date));
-      
+
       processable_records.push(ProcessableChatterRecord {
         salesforce_id,
         feed_items,
       });
     }
-    
+
     log::info!("処理可能レコード: {}件", processable_records.len());
     processable_records
   }

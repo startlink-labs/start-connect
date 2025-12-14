@@ -100,7 +100,9 @@ pub async fn process_file_mapping(
     .map_err(|_| "認証情報が見つかりません。再ログインしてください。")?;
 
   let portal_id = credentials.portal_id.unwrap_or(0).to_string();
-  let ui_domain = credentials.ui_domain.unwrap_or_else(|| "app.hubspot.com".to_string());
+  let ui_domain = credentials
+    .ui_domain
+    .unwrap_or_else(|| "app.hubspot.com".to_string());
   let hubspot_service = HubSpotService::new(credentials.token);
 
   emit_progress("extract_records", 20, "対象レコードを抽出中...");
@@ -130,22 +132,27 @@ pub async fn process_file_mapping(
 
   // 5. 結果CSVファイルを一時ディレクトリに作成
   let temp_dir = std::env::temp_dir();
-  let result_csv_path = temp_dir.join(format!("hubspot_upload_result_{}.csv", chrono::Utc::now().timestamp()));
+  let result_csv_path = temp_dir.join(format!(
+    "hubspot_upload_result_{}.csv",
+    chrono::Utc::now().timestamp()
+  ));
   let mut csv_writer = csv::Writer::from_path(&result_csv_path)
     .map_err(|e| format!("CSVファイル作成エラー: {}", e))?;
-  
+
   // CSVヘッダー書き込み
-  csv_writer.write_record(&[
-    "Salesforce ID",
-    "HubSpot Object",
-    "HubSpot Record ID",
-    "HubSpot Record URL",
-    "Files Count",
-    "Files Uploaded",
-    "Note Created",
-    "Status",
-    "Reason"
-  ]).map_err(|e| format!("CSVヘッダー書き込みエラー: {}", e))?;
+  csv_writer
+    .write_record([
+      "Salesforce ID",
+      "HubSpot Object",
+      "HubSpot Record ID",
+      "HubSpot Record URL",
+      "Files Count",
+      "Files Uploaded",
+      "Note Created",
+      "Status",
+      "Reason",
+    ])
+    .map_err(|e| format!("CSVヘッダー書き込みエラー: {}", e))?;
 
   // 6. HubSpotでレコード存在確認とグループ化
   let mut all_processable_records = HashMap::new();
@@ -197,12 +204,12 @@ pub async fn process_file_mapping(
               prefix,
               missing_ids
             );
-            
+
             let missing_count = missing_ids.len();
-            
+
             // 見つからなかったレコードをCSVに書き込み
             for missing_id in missing_ids {
-              let _ = csv_writer.write_record(&[
+              let _ = csv_writer.write_record([
                 missing_id,
                 &mapping.hubspot_object,
                 "",
@@ -211,10 +218,10 @@ pub async fn process_file_mapping(
                 "0",
                 "false",
                 "skipped",
-                "HubSpotにレコードが存在しません"
+                "HubSpotにレコードが存在しません",
               ]);
             }
-            
+
             // サマリー更新
             summaries
               .entry(prefix.clone())
@@ -263,16 +270,18 @@ pub async fn process_file_mapping(
   for (prefix, records) in &all_processable_records {
     if let Some(mapping) = object_mappings.get(prefix) {
       log::info!("{}: {}件の処理可能レコードを処理", prefix, records.len());
-      
+
       // オブジェクトサマリーを初期化（まだ存在しない場合のみ）
-      summaries.entry(prefix.clone()).or_insert_with(|| ObjectSummary {
-        prefix: prefix.clone(),
-        hubspot_object: mapping.hubspot_object.clone(),
-        success_count: 0,
-        skipped_count: 0,
-        error_count: 0,
-        uploaded_files: 0,
-      });
+      summaries
+        .entry(prefix.clone())
+        .or_insert_with(|| ObjectSummary {
+          prefix: prefix.clone(),
+          hubspot_object: mapping.hubspot_object.clone(),
+          success_count: 0,
+          skipped_count: 0,
+          error_count: 0,
+          uploaded_files: 0,
+        });
 
       for (i, record) in records.iter().enumerate() {
         // 進捗更新
@@ -288,16 +297,24 @@ pub async fn process_file_mapping(
           ),
         );
 
-        let hubspot_record_id = hubspot_record_cache.get(&record.salesforce_id).cloned().unwrap_or_default();
+        let hubspot_record_id = hubspot_record_cache
+          .get(&record.salesforce_id)
+          .cloned()
+          .unwrap_or_default();
         let files_count = record.content_document_ids.len();
-        
+
         // HubSpotレコードURLを構築
         let record_url = if !hubspot_record_id.is_empty() {
-          build_record_url(&ui_domain, &portal_id, &mapping.hubspot_object, &hubspot_record_id)
+          build_record_url(
+            &ui_domain,
+            &portal_id,
+            &mapping.hubspot_object,
+            &hubspot_record_id,
+          )
         } else {
           String::new()
         };
-        
+
         match process_single_record(
           &hubspot_service,
           record,
@@ -314,9 +331,9 @@ pub async fn process_file_mapping(
               summary.success_count += 1;
               summary.uploaded_files += files_uploaded;
             }
-            
+
             // CSVに結果書き込み
-            let _ = csv_writer.write_record(&[
+            let _ = csv_writer.write_record([
               &record.salesforce_id,
               &mapping.hubspot_object,
               &hubspot_record_id,
@@ -325,9 +342,9 @@ pub async fn process_file_mapping(
               &files_uploaded.to_string(),
               &note_created.to_string(),
               "success",
-              ""
+              "",
             ]);
-            
+
             log::info!(
               "処理完了: {} - {}件のファイル",
               record.salesforce_id,
@@ -339,9 +356,9 @@ pub async fn process_file_mapping(
             if let Some(summary) = summaries.get_mut(prefix) {
               summary.error_count += 1;
             }
-            
+
             // CSVにエラー書き込み
-            let _ = csv_writer.write_record(&[
+            let _ = csv_writer.write_record([
               &record.salesforce_id,
               &mapping.hubspot_object,
               &hubspot_record_id,
@@ -350,9 +367,9 @@ pub async fn process_file_mapping(
               "0",
               "false",
               "error",
-              &e.to_string()
+              &e.to_string(),
             ]);
-            
+
             log::error!("レコード処理エラー {}: {}", record.salesforce_id, e);
           }
         }
@@ -361,8 +378,10 @@ pub async fn process_file_mapping(
   }
 
   // CSVファイルをフラッシュ
-  csv_writer.flush().map_err(|e| format!("CSVフラッシュエラー: {}", e))?;
-  
+  csv_writer
+    .flush()
+    .map_err(|e| format!("CSVフラッシュエラー: {}", e))?;
+
   emit_progress("complete", 100, "処理完了");
 
   let response = FileMappingResponse {
@@ -511,14 +530,13 @@ pub async fn get_hubspot_objects() -> Result<Vec<HubSpotObject>, String> {
 /// 結果CSVを指定パスに保存
 #[command]
 pub async fn save_result_csv(temp_path: String, save_path: String) -> Result<(), String> {
-  std::fs::copy(&temp_path, &save_path)
-    .map_err(|e| format!("ファイル保存エラー: {}", e))?;
-  
+  std::fs::copy(&temp_path, &save_path).map_err(|e| format!("ファイル保存エラー: {}", e))?;
+
   // 一時ファイルを削除
   std::fs::remove_file(&temp_path)
     .map_err(|e| log::warn!("一時ファイル削除失敗: {}", e))
     .ok();
-  
+
   log::info!("結果CSVを保存: {}", save_path);
   Ok(())
 }
@@ -526,8 +544,7 @@ pub async fn save_result_csv(temp_path: String, save_path: String) -> Result<(),
 /// 一時ファイルを削除（保存せずに終了する場合）
 #[command]
 pub async fn cleanup_temp_csv(temp_path: String) -> Result<(), String> {
-  std::fs::remove_file(&temp_path)
-    .map_err(|e| format!("一時ファイル削除エラー: {}", e))?;
+  std::fs::remove_file(&temp_path).map_err(|e| format!("一時ファイル削除エラー: {}", e))?;
   log::info!("一時ファイルを削除: {}", temp_path);
   Ok(())
 }
@@ -594,18 +611,17 @@ pub async fn process_chatter_migration(
     .map_err(|_| "認証情報が見つかりません。再ログインしてください。")?;
 
   let portal_id = credentials.portal_id.unwrap_or(0).to_string();
-  let ui_domain = credentials.ui_domain.unwrap_or_else(|| "app.hubspot.com".to_string());
+  let ui_domain = credentials
+    .ui_domain
+    .unwrap_or_else(|| "app.hubspot.com".to_string());
   let hubspot_service = HubSpotService::new(credentials.token);
 
   emit_progress("extract_records", 20, "Chatterレコードを抽出中...");
 
   // FeedItemを読み込み
-  let feed_items_by_prefix = CsvProcessor::extract_chatter_records(
-    &feed_item_path,
-    &feed_comment_path,
-    &object_mappings,
-  )
-  .map_err(|e| format!("FeedItem抽出エラー: {}", e))?;
+  let feed_items_by_prefix =
+    CsvProcessor::extract_chatter_records(&feed_item_path, &feed_comment_path, &object_mappings)
+      .map_err(|e| format!("FeedItem抽出エラー: {}", e))?;
 
   // 対象FeedItemIdを収集
   let target_feed_item_ids: std::collections::HashSet<String> = feed_items_by_prefix
@@ -616,27 +632,33 @@ pub async fn process_chatter_migration(
   emit_progress("load_comments", 30, "コメントを読み込み中...");
 
   // FeedCommentを読み込み
-  let comments_by_feed_item = CsvProcessor::load_feed_comments(&feed_comment_path, &target_feed_item_ids)
-    .map_err(|e| format!("FeedComment読み込みエラー: {}", e))?;
+  let comments_by_feed_item =
+    CsvProcessor::load_feed_comments(&feed_comment_path, &target_feed_item_ids)
+      .map_err(|e| format!("FeedComment読み込みエラー: {}", e))?;
 
   emit_progress("hubspot_search", 40, "HubSpotレコードを検索中...");
 
   // 結果CSVファイルを作成
   let temp_dir = std::env::temp_dir();
-  let result_csv_path = temp_dir.join(format!("chatter_migration_result_{}.csv", chrono::Utc::now().timestamp()));
+  let result_csv_path = temp_dir.join(format!(
+    "chatter_migration_result_{}.csv",
+    chrono::Utc::now().timestamp()
+  ));
   let mut csv_writer = csv::Writer::from_path(&result_csv_path)
     .map_err(|e| format!("CSVファイル作成エラー: {}", e))?;
 
-  csv_writer.write_record(&[
-    "Salesforce Record ID",
-    "HubSpot Object",
-    "HubSpot Record ID",
-    "HubSpot Record URL",
-    "Feed Items Count",
-    "Notes Created",
-    "Status",
-    "Reason"
-  ]).map_err(|e| format!("CSVヘッダー書き込みエラー: {}", e))?;
+  csv_writer
+    .write_record([
+      "Salesforce Record ID",
+      "HubSpot Object",
+      "HubSpot Record ID",
+      "HubSpot Record URL",
+      "Feed Items Count",
+      "Notes Created",
+      "Status",
+      "Reason",
+    ])
+    .map_err(|e| format!("CSVヘッダー書き込みエラー: {}", e))?;
 
   let mut hubspot_record_cache = HashMap::new();
   let mut summaries: HashMap<String, ObjectSummary> = HashMap::new();
@@ -683,7 +705,7 @@ pub async fn process_chatter_migration(
             let missing_count = missing_ids.len();
 
             for missing_id in missing_ids {
-              let _ = csv_writer.write_record(&[
+              let _ = csv_writer.write_record([
                 missing_id,
                 &mapping.hubspot_object,
                 "",
@@ -691,7 +713,7 @@ pub async fn process_chatter_migration(
                 "0",
                 "0",
                 "skipped",
-                "HubSpotにレコードが存在しません"
+                "HubSpotにレコードが存在しません",
               ]);
             }
 
@@ -736,16 +758,23 @@ pub async fn process_chatter_migration(
       &format!("処理中 ({}/{})", i + 1, processable_records.len()),
     );
 
-    if let Some(mapping) = object_mappings.iter().find(|(prefix, _)| {
-      record.salesforce_id.starts_with(prefix.as_str())
-    }).map(|(_, m)| m) {
+    if let Some(mapping) = object_mappings
+      .iter()
+      .find(|(prefix, _)| record.salesforce_id.starts_with(prefix.as_str()))
+      .map(|(_, m)| m)
+    {
       let hubspot_record_id = hubspot_record_cache
         .get(&record.salesforce_id)
         .cloned()
         .unwrap_or_default();
 
       let record_url = if !hubspot_record_id.is_empty() {
-        build_record_url(&ui_domain, &portal_id, &mapping.hubspot_object, &hubspot_record_id)
+        build_record_url(
+          &ui_domain,
+          &portal_id,
+          &mapping.hubspot_object,
+          &hubspot_record_id,
+        )
       } else {
         String::new()
       };
@@ -808,7 +837,7 @@ pub async fn process_chatter_migration(
         "error"
       };
 
-      let _ = csv_writer.write_record(&[
+      let _ = csv_writer.write_record([
         &record.salesforce_id,
         &mapping.hubspot_object,
         &hubspot_record_id,
@@ -821,7 +850,9 @@ pub async fn process_chatter_migration(
     }
   }
 
-  csv_writer.flush().map_err(|e| format!("CSVフラッシュエラー: {}", e))?;
+  csv_writer
+    .flush()
+    .map_err(|e| format!("CSVフラッシュエラー: {}", e))?;
   emit_progress("complete", 100, "処理完了");
 
   log::info!("Chatter移行処理完了");
@@ -864,7 +895,9 @@ fn generate_chatter_note_html(
   ));
 
   // 投稿本文
-  html.push_str("<div style=\"border-left: 3px solid #0091ae; padding-left: 12px; margin: 12px 0;\">");
+  html.push_str(
+    "<div style=\"border-left: 3px solid #0091ae; padding-left: 12px; margin: 12px 0;\">",
+  );
   html.push_str(&feed_item.body);
   html.push_str("</div>");
 
