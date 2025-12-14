@@ -42,7 +42,9 @@ pub fn run() {
       // ビジネスロジック
       commands::get_hubspot_objects,
       commands::analyze_csv_files,
-      commands::process_file_mapping
+      commands::process_file_mapping,
+      commands::save_result_csv,
+      commands::cleanup_temp_csv
     ])
     .manage(auth::OAuthState {
       pending_auth: std::sync::Mutex::new(None),

@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "./useAuth";
 
 interface HubSpotObject {
@@ -15,7 +15,7 @@ export function useHubSpotObjects() {
   const [error, setError] = useState<string | null>(null);
   const fetchedRef = useRef(false);
 
-  const fetchObjects = async () => {
+  const fetchObjects = useCallback(async () => {
     if (!isAuthenticated || fetchedRef.current) return;
 
     setLoading(true);
@@ -27,11 +27,11 @@ export function useHubSpotObjects() {
       setObjects(objects);
     } catch (err) {
       setError(err instanceof Error ? err.message : "エラーが発生しました");
-      fetchedRef.current = false; // エラー時は再試行を許可
+      fetchedRef.current = false;
     } finally {
       setLoading(false);
     }
-  };
+  }, [isAuthenticated]);
 
   useEffect(() => {
     if (isAuthenticated && !fetchedRef.current) {

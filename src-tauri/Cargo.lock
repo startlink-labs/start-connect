@@ -4130,6 +4130,7 @@ dependencies = [
  "csv",
  "keyring",
  "log",
+ "percent-encoding",
  "rand 0.8.5",
  "reqwest",
  "serde",

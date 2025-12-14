@@ -188,14 +188,21 @@ impl HubSpotService {
 
   /// ファイルパスからHubSpotファイル情報を取得
   pub async fn get_file_by_path(&self, file_path: &str) -> Result<Option<FileInfo>> {
-    // URLエンコード
-    let encoded_path =
-      url::form_urlencoded::byte_serialize(file_path.as_bytes()).collect::<String>();
+    // パスをセグメントごとに分割してパーセントエンコード
+    use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
+    let encoded_path = file_path
+      .split('/')
+      .map(|segment| utf8_percent_encode(segment, NON_ALPHANUMERIC).to_string())
+      .collect::<Vec<_>>()
+      .join("%2F");
 
     let url = format!(
       "https://api.hubapi.com/files/v3/files/stat/{}",
       encoded_path
     );
+
+    log::debug!("[FileCheck] Checking file: {}", file_path);
+    log::debug!("[FileCheck] Encoded URL: {}", url);
 
     let response = self
       .client
@@ -203,6 +210,8 @@ impl HubSpotService {
       .bearer_auth(&self.token)
       .send()
       .await?;
+
+    log::debug!("[FileCheck] Response status: {}", response.status());
 
     if response.status().is_success() {
       let data: serde_json::Value = response.json().await?;
@@ -214,10 +223,16 @@ impl HubSpotService {
           path: file_data["path"].as_str().unwrap_or("").to_string(),
           url: file_data["url"].as_str().map(|s| s.to_string()),
         };
+        log::debug!(
+          "[FileCheck] File found: {} (ID: {})",
+          file_path,
+          file_info.id
+        );
         return Ok(Some(file_info));
       }
     }
 
+    log::debug!("[FileCheck] File not found: {}", file_path);
     Ok(None)
   }
 

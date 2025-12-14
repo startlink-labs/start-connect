@@ -3,7 +3,7 @@
 
 use crate::auth::SecureStorage;
 use crate::csv::{CsvProcessor, ObjectMapping};
-use crate::hubspot::HubSpotService;
+use crate::hubspot::{build_record_url, HubSpotService};
 use anyhow::Result;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -13,12 +13,25 @@ use tauri::{command, Emitter};
 /// ファイルマッピング処理のレスポンスデータ
 #[derive(Debug, Serialize)]
 pub struct FileMappingResponse {
-  /// 処理成功フラグ
-  pub success: bool,
-  /// メッセージ
-  pub message: String,
-  /// 処理されたレコード数
-  pub processed_records: usize,
+  /// 結果CSVファイルパス（一時ファイル）
+  pub result_csv_path: String,
+  /// オブジェクトごとのサマリー
+  pub summaries: Vec<ObjectSummary>,
+}
+
+/// オブジェクトごとの処理サマリー
+#[derive(Debug, Serialize)]
+pub struct ObjectSummary {
+  /// Salesforceオブジェクトプレフィックス
+  pub prefix: String,
+  /// HubSpotオブジェクト名
+  pub hubspot_object: String,
+  /// 処理成功数
+  pub success_count: usize,
+  /// スキップ数
+  pub skipped_count: usize,
+  /// エラー数
+  pub error_count: usize,
   /// アップロードされたファイル数
   pub uploaded_files: usize,
 }
@@ -86,6 +99,8 @@ pub async fn process_file_mapping(
     .await
     .map_err(|_| "認証情報が見つかりません。再ログインしてください。")?;
 
+  let portal_id = credentials.portal_id.unwrap_or(0).to_string();
+  let ui_domain = credentials.ui_domain.unwrap_or_else(|| "app.hubspot.com".to_string());
   let hubspot_service = HubSpotService::new(credentials.token);
 
   emit_progress("extract_records", 20, "対象レコードを抽出中...");
@@ -113,9 +128,29 @@ pub async fn process_file_mapping(
 
   emit_progress("hubspot_search", 50, "HubSpotレコードを検索中...");
 
-  // 5. HubSpotでレコード存在確認とグループ化
+  // 5. 結果CSVファイルを一時ディレクトリに作成
+  let temp_dir = std::env::temp_dir();
+  let result_csv_path = temp_dir.join(format!("hubspot_upload_result_{}.csv", chrono::Utc::now().timestamp()));
+  let mut csv_writer = csv::Writer::from_path(&result_csv_path)
+    .map_err(|e| format!("CSVファイル作成エラー: {}", e))?;
+  
+  // CSVヘッダー書き込み
+  csv_writer.write_record(&[
+    "Salesforce ID",
+    "HubSpot Object",
+    "HubSpot Record ID",
+    "HubSpot Record URL",
+    "Files Count",
+    "Files Uploaded",
+    "Note Created",
+    "Status",
+    "Reason"
+  ]).map_err(|e| format!("CSVヘッダー書き込みエラー: {}", e))?;
+
+  // 6. HubSpotでレコード存在確認とグループ化
   let mut all_processable_records = HashMap::new();
   let mut hubspot_record_cache = HashMap::new();
+  let mut summaries: HashMap<String, ObjectSummary> = HashMap::new();
 
   for (prefix, records) in &filtered_target_records {
     if let Some(mapping) = object_mappings.get(prefix) {
@@ -151,6 +186,49 @@ pub async fn process_file_mapping(
             found_records.len()
           );
 
+          // 見つからなかったSalesforce IDをCSVに書き込み
+          if found_records.len() < unique_salesforce_ids.len() {
+            let missing_ids: Vec<&String> = unique_salesforce_ids
+              .iter()
+              .filter(|id| !found_records.contains_key(*id))
+              .collect();
+            log::warn!(
+              "{}: HubSpotに見つからなかったSalesforce ID: {:?}",
+              prefix,
+              missing_ids
+            );
+            
+            let missing_count = missing_ids.len();
+            
+            // 見つからなかったレコードをCSVに書き込み
+            for missing_id in missing_ids {
+              let _ = csv_writer.write_record(&[
+                missing_id,
+                &mapping.hubspot_object,
+                "",
+                "",
+                "0",
+                "0",
+                "false",
+                "skipped",
+                "HubSpotにレコードが存在しません"
+              ]);
+            }
+            
+            // サマリー更新
+            summaries
+              .entry(prefix.clone())
+              .or_insert_with(|| ObjectSummary {
+                prefix: prefix.clone(),
+                hubspot_object: mapping.hubspot_object.clone(),
+                success_count: 0,
+                skipped_count: 0,
+                error_count: 0,
+                uploaded_files: 0,
+              })
+              .skipped_count += missing_count;
+          }
+
           // キャッシュに追加
           hubspot_record_cache.extend(found_records.clone());
 
@@ -164,6 +242,11 @@ pub async fn process_file_mapping(
         }
         Err(e) => {
           log::error!("HubSpot検索エラー {}: {}", prefix, e);
+          log::warn!(
+            "{}: 検索対象だったSalesforce ID: {:?}",
+            prefix,
+            unique_salesforce_ids
+          );
           continue;
         }
       }
@@ -175,14 +258,21 @@ pub async fn process_file_mapping(
 
   emit_progress("file_processing", 70, "ファイル処理とアップロード中...");
 
-  // 6. ファイル処理とノート作成
-  let mut processed_records = 0;
-  let mut uploaded_files = 0;
-  let mut error_count = 0;
+  // 7. ファイル処理とノート作成
 
   for (prefix, records) in &all_processable_records {
     if let Some(mapping) = object_mappings.get(prefix) {
       log::info!("{}: {}件の処理可能レコードを処理", prefix, records.len());
+      
+      // オブジェクトサマリーを初期化（まだ存在しない場合のみ）
+      summaries.entry(prefix.clone()).or_insert_with(|| ObjectSummary {
+        prefix: prefix.clone(),
+        hubspot_object: mapping.hubspot_object.clone(),
+        success_count: 0,
+        skipped_count: 0,
+        error_count: 0,
+        uploaded_files: 0,
+      });
 
       for (i, record) in records.iter().enumerate() {
         // 進捗更新
@@ -198,6 +288,16 @@ pub async fn process_file_mapping(
           ),
         );
 
+        let hubspot_record_id = hubspot_record_cache.get(&record.salesforce_id).cloned().unwrap_or_default();
+        let files_count = record.content_document_ids.len();
+        
+        // HubSpotレコードURLを構築
+        let record_url = if !hubspot_record_id.is_empty() {
+          build_record_url(&ui_domain, &portal_id, &mapping.hubspot_object, &hubspot_record_id)
+        } else {
+          String::new()
+        };
+        
         match process_single_record(
           &hubspot_service,
           record,
@@ -209,18 +309,50 @@ pub async fn process_file_mapping(
         .await
         {
           Ok((files_uploaded, note_created)) => {
-            uploaded_files += files_uploaded;
-            if note_created {
-              processed_records += 1;
+            // サマリー更新
+            if let Some(summary) = summaries.get_mut(prefix) {
+              summary.success_count += 1;
+              summary.uploaded_files += files_uploaded;
             }
+            
+            // CSVに結果書き込み
+            let _ = csv_writer.write_record(&[
+              &record.salesforce_id,
+              &mapping.hubspot_object,
+              &hubspot_record_id,
+              &record_url,
+              &files_count.to_string(),
+              &files_uploaded.to_string(),
+              &note_created.to_string(),
+              "success",
+              ""
+            ]);
+            
             log::info!(
               "処理完了: {} - {}件のファイル",
               record.salesforce_id,
-              record.content_document_ids.len()
+              files_count
             );
           }
           Err(e) => {
-            error_count += 1;
+            // サマリー更新
+            if let Some(summary) = summaries.get_mut(prefix) {
+              summary.error_count += 1;
+            }
+            
+            // CSVにエラー書き込み
+            let _ = csv_writer.write_record(&[
+              &record.salesforce_id,
+              &mapping.hubspot_object,
+              &hubspot_record_id,
+              &record_url,
+              &files_count.to_string(),
+              "0",
+              "false",
+              "error",
+              &e.to_string()
+            ]);
+            
             log::error!("レコード処理エラー {}: {}", record.salesforce_id, e);
           }
         }
@@ -228,16 +360,14 @@ pub async fn process_file_mapping(
     }
   }
 
+  // CSVファイルをフラッシュ
+  csv_writer.flush().map_err(|e| format!("CSVフラッシュエラー: {}", e))?;
+  
   emit_progress("complete", 100, "処理完了");
 
   let response = FileMappingResponse {
-    success: true,
-    message: format!(
-      "{}件のレコードを処理し、{}個のファイルをアップロードしました（エラー: {}件）",
-      processed_records, uploaded_files, error_count
-    ),
-    processed_records,
-    uploaded_files,
+    result_csv_path: result_csv_path.to_string_lossy().to_string(),
+    summaries: summaries.into_values().collect(),
   };
 
   log::info!("ファイルマッピング処理完了: {:?}", response);
@@ -260,7 +390,14 @@ async fn process_single_record(
   // 各ファイルを処理
   for content_doc_id in &record.content_document_ids {
     if let Some(file_data) = file_info.get(content_doc_id) {
-      let safe_filename = format!("{}_{}", file_data.version_id, file_data.path_on_client);
+      // ファイル名の拡張子を小文字に統一（HubSpot側の仕様に合わせる）
+      let filename = file_data.path_on_client.clone();
+      let safe_filename = if let Some(dot_pos) = filename.rfind('.') {
+        let (name, ext) = filename.split_at(dot_pos);
+        format!("{}_{}{}", file_data.version_id, name, ext.to_lowercase())
+      } else {
+        format!("{}_{}", file_data.version_id, filename)
+      };
 
       // HubSpotでファイル存在確認
       match hubspot_service
@@ -369,4 +506,28 @@ pub async fn get_hubspot_objects() -> Result<Vec<HubSpotObject>, String> {
     }
     Err(e) => Err(format!("オブジェクト取得エラー: {}", e)),
   }
+}
+
+/// 結果CSVを指定パスに保存
+#[command]
+pub async fn save_result_csv(temp_path: String, save_path: String) -> Result<(), String> {
+  std::fs::copy(&temp_path, &save_path)
+    .map_err(|e| format!("ファイル保存エラー: {}", e))?;
+  
+  // 一時ファイルを削除
+  std::fs::remove_file(&temp_path)
+    .map_err(|e| log::warn!("一時ファイル削除失敗: {}", e))
+    .ok();
+  
+  log::info!("結果CSVを保存: {}", save_path);
+  Ok(())
+}
+
+/// 一時ファイルを削除（保存せずに終了する場合）
+#[command]
+pub async fn cleanup_temp_csv(temp_path: String) -> Result<(), String> {
+  std::fs::remove_file(&temp_path)
+    .map_err(|e| format!("一時ファイル削除エラー: {}", e))?;
+  log::info!("一時ファイルを削除: {}", temp_path);
+  Ok(())
 }

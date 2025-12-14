@@ -1,19 +1,19 @@
-import { useMutation } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { toast } from "sonner";
 
-interface FileMappingResponse {
-  success: boolean;
-  message: string;
-  processed_records: number;
+export interface ObjectSummary {
+  prefix: string;
+  hubspot_object: string;
+  success_count: number;
+  skipped_count: number;
+  error_count: number;
   uploaded_files: number;
 }
 
-interface ProgressInfo {
-  step: string;
-  progress: number;
-  message: string;
+interface FileMappingResult {
+  result_csv_path: string;
+  summaries: ObjectSummary[];
 }
 
 interface ObjectMapping {
@@ -22,46 +22,62 @@ interface ObjectMapping {
 }
 
 export const useFileMapping = () => {
-  const [progress, setProgress] = useState<ProgressInfo | null>(null);
+  const [isMapping, setIsMapping] = useState(false);
+  const [resultCsvPath, setResultCsvPath] = useState<string | null>(null);
+  const [summaries, setSummaries] = useState<ObjectSummary[]>([]);
 
-  useEffect(() => {
-    const unlisten = listen<ProgressInfo>("file-mapping-progress", (event) => {
-      setProgress(event.payload);
-    });
+  const processFileMapping = async (
+    contentVersionPath: string,
+    contentDocumentLinkPath: string,
+    contentVersionFolderPath: string,
+    objectMappings: Record<string, ObjectMapping>,
+  ) => {
+    setIsMapping(true);
+    toast.loading("ファイルマッピングを開始中...");
 
-    return () => {
-      unlisten.then((fn) => fn());
-    };
-  }, []);
-
-  const mutation = useMutation({
-    mutationFn: ({
-      contentVersionPath,
-      contentDocumentLinkPath,
-      contentVersionFolderPath,
-      objectMappings,
-    }: {
-      contentVersionPath: string;
-      contentDocumentLinkPath: string;
-      contentVersionFolderPath: string;
-      objectMappings: Record<string, ObjectMapping>;
-    }): Promise<FileMappingResponse> =>
-      invoke("process_file_mapping", {
+    try {
+      const result = (await invoke("process_file_mapping", {
         contentVersionPath,
         contentDocumentLinkPath,
         contentVersionFolderPath,
         objectMappings,
-      }),
-    onMutate: () => {
-      setProgress(null);
-    },
-    onSettled: () => {
-      setProgress(null);
-    },
-  });
+      })) as FileMappingResult;
+
+      setResultCsvPath(result.result_csv_path);
+      setSummaries(result.summaries);
+
+      const totalSuccess = result.summaries.reduce(
+        (sum, s) => sum + s.success_count,
+        0,
+      );
+      const totalFiles = result.summaries.reduce(
+        (sum, s) => sum + s.uploaded_files,
+        0,
+      );
+      toast.success(
+        `${totalSuccess}件のレコードを処理し、${totalFiles}個のファイルをアップロードしました`,
+      );
+
+      return result;
+    } catch (error) {
+      toast.error(`エラー: ${error}`);
+      throw error;
+    } finally {
+      toast.dismiss();
+      setIsMapping(false);
+    }
+  };
+
+  const reset = () => {
+    setResultCsvPath(null);
+    setSummaries([]);
+  };
 
   return {
-    ...mutation,
-    progress,
+    isMapping,
+    resultCsvPath,
+    summaries,
+    processFileMapping,
+    reset,
   };
 };

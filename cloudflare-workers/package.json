@@ -4,7 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "set-env:client": "wrangler secret put HUBSPOT_CLIENT_ID",
+    "set-env:secret": "wrangler secret put HUBSPOT_CLIENT_SECRET"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250115.0",

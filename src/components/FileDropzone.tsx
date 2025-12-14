@@ -1,3 +1,4 @@
+import { open } from "@tauri-apps/plugin-dialog";
 import { File, Upload, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -24,7 +25,6 @@ export function FileDropzone({
 
   const selectFile = async () => {
     try {
-      const { open } = await import("@tauri-apps/plugin-dialog");
       const selected = await open({
         multiple: false,
         filters: [
@@ -52,10 +52,11 @@ export function FileDropzone({
 
   return (
     <div className="space-y-2">
-      <label className="text-sm font-medium text-gray-700">{label}</label>
-      <div
+      <div className="text-sm font-medium text-gray-700">{label}</div>
+      <button
+        type="button"
         className={cn(
-          "relative border-2 border-dashed rounded-md p-6 transition-colors cursor-pointer",
+          "relative border-2 border-dashed rounded-md p-6 transition-colors cursor-pointer w-full text-left",
           isDragOver && "border-blue-400 bg-blue-50",
           !isDragOver && !value && "border-gray-300 hover:border-gray-400",
           !isDragOver && value && "border-green-300 bg-green-50",
@@ -70,8 +71,8 @@ export function FileDropzone({
         onDrop={(e) => {
           e.preventDefault();
           setIsDragOver(false);
-          // Note: Tauri doesn't support file drop in web context
         }}
+        disabled={disabled}
       >
         {value ? (
           <div className="flex items-center justify-between">
@@ -105,7 +106,7 @@ export function FileDropzone({
             </div>
           </div>
         )}
-      </div>
+      </button>
     </div>
   );
 }

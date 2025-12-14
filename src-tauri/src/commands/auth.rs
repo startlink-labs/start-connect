@@ -4,6 +4,13 @@ use anyhow::Result;
 use serde::Serialize;
 use tauri::{command, State};
 
+/// ポータル情報
+#[derive(Debug, Serialize)]
+pub struct PortalInfo {
+  pub portal_id: u32,
+  pub ui_domain: String,
+}
+
 /// OAuth設定（ビルド時に環境変数から取得）
 const HUBSPOT_CLIENT_ID: &str = match option_env!("HUBSPOT_CLIENT_ID") {
   Some(id) => id,
@@ -54,21 +61,6 @@ pub async fn is_authenticated() -> Result<Option<PortalInfo>, String> {
   }
 }
 
-/// ログアウト
-#[command]
-pub async fn logout() -> Result<(), String> {
-  match SecureStorage::clear_credentials() {
-    Ok(_) => {
-      log::info!("Credentials cleared successfully");
-      Ok(())
-    }
-    Err(e) => {
-      log::error!("Failed to clear credentials: {}", e);
-      Err(format!("ログアウトに失敗: {}", e))
-    }
-  }
-}
-
 /// トークンを保存
 #[command]
 pub async fn save_oauth_tokens(
@@ -92,9 +84,17 @@ pub async fn save_oauth_tokens(
   Ok(())
 }
 
-/// ポータル情報
-#[derive(Debug, Serialize)]
-pub struct PortalInfo {
-  pub portal_id: u32,
-  pub ui_domain: String,
+/// ログアウト
+#[command]
+pub async fn logout() -> Result<(), String> {
+  match SecureStorage::clear_credentials() {
+    Ok(_) => {
+      log::info!("Credentials cleared successfully");
+      Ok(())
+    }
+    Err(e) => {
+      log::error!("Failed to clear credentials: {}", e);
+      Err(format!("ログアウトに失敗: {}", e))
+    }
+  }
 }
