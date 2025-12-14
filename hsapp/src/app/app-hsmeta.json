@@ -7,7 +7,9 @@
     "distribution": "marketplace",
     "auth": {
       "type": "oauth",
-      "redirectUrls": ["http://localhost:3000/oauth-callback"],
+      "redirectUrls": [
+        "https://hubspot-oauth-proxy.stlb-file-trans.workers.dev/oauth/callback"
+      ],
       "requiredScopes": [
         "oauth",
         "crm.objects.contacts.read",
@@ -34,10 +36,10 @@
       "img": []
     },
     "support": {
-      "supportEmail": "support@example.com",
-      "documentationUrl": "https://example.com/docs",
-      "supportUrl": "https://example.com/support",
-      "supportPhone": "+18005555555"
+      "supportEmail": "support@startlink.co.jp",
+      "documentationUrl": "https://startlink.co.jp",
+      "supportUrl": "https://startlink.co.jp",
+      "supportPhone": "+81000000000"
     }
   }
 }

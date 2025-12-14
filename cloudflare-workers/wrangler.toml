@@ -1,0 +1,7 @@
+name = "hubspot-oauth-proxy"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+# 環境変数（Cloudflare Dashboardで設定）
+# HUBSPOT_CLIENT_ID
+# HUBSPOT_CLIENT_SECRET
