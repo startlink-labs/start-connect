@@ -2,9 +2,11 @@ import { useAuth } from "../hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { HubSpotObjectsPopover } from "@/components/HubSpotObjectsSheet";
 import { open } from "@tauri-apps/plugin-shell";
+import { useHeaderStore } from "../stores/headerStore";
 
 export function Header() {
 	const { portalInfo: user, logout } = useAuth();
+	const { centerMessage } = useHeaderStore();
 
 	const handleLogout = () => {
 		logout.mutate();
@@ -13,7 +15,12 @@ export function Header() {
 	return (
 		<header className="border-b bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/60">
 			<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-				<div className="flex justify-between items-center h-14">
+				<div className="flex justify-between items-center h-14 relative">
+					{centerMessage && (
+						<div className="absolute left-1/2 transform -translate-x-1/2 text-sm font-medium text-blue-600">
+							{centerMessage}
+						</div>
+					)}
 					<div className="flex items-center space-x-3">
 						{user?.portal_id && user?.ui_domain && (
 							<div className="flex items-center space-x-2">

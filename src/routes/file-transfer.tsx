@@ -1,5 +1,5 @@
 import { createFileRoute, Navigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "../hooks/useAuth";
 import { useHubSpotObjects } from "../hooks/useHubSpotObjects";
 import { Button } from "@/components/ui/button";
@@ -7,7 +7,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { FileDropzone } from "../components/FileDropzone";
+import { FixedActionBar } from "../components/FixedActionBar";
+import { StepProgress } from "../components/StepProgress";
+import { FolderOpen } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
+import { toast } from "sonner";
+import { useHeaderStore } from "../stores/headerStore";
 
 export const Route = createFileRoute("/file-transfer")({
 	component: FileTransfer,
@@ -28,19 +34,24 @@ interface SalesforceProperty {
 }
 
 function FileTransfer() {
-	const { isAuthenticated } = useAuth();
+	const { isAuthenticated, portalInfo } = useAuth();
+	const { setCenterMessage } = useHeaderStore();
 	const { objects: hubspotObjects } = useHubSpotObjects();
 	const [contentVersionPath, setContentVersionPath] = useState("");
 	const [contentDocumentLinkPath, setContentDocumentLinkPath] = useState("");
 	const [contentVersionFolderPath, setContentVersionFolderPath] = useState("");
 	const [isProcessing, setIsProcessing] = useState(false);
-	const [status, setStatus] = useState("");
-	const [step, setStep] = useState<'files' | 'mapping'>('files');
+	const [step, setStep] = useState<'files' | 'mapping' | 'download'>('files');
 	const [objectGroups, setObjectGroups] = useState<ObjectGroup[]>([]);
 	const [objectMapping, setObjectMapping] = useState<ObjectMapping>({});
 	const [salesforceProperties, setSalesforceProperties] = useState<SalesforceProperty>({});
 	const [isMapping, setIsMapping] = useState(false);
+	const [showOnlyMapped, setShowOnlyMapped] = useState(false);
 
+	useEffect(() => {
+		setCenterMessage("ファイルマッピング");
+		return () => setCenterMessage(null);
+	}, [setCenterMessage]);
 
 	// Salesforce標準オブジェクト定義
 	const SALESFORCE_OBJECTS: { [key: string]: string } = {
@@ -65,43 +76,18 @@ function FileTransfer() {
 		"001", "003", "006", "500", "00Q", "701", "00T", "00U"
 	];
 
-	const selectFile = async (setPath: (path: string) => void) => {
-		try {
-			console.log('ファイル選択を開始...');
-			const { open } = await import('@tauri-apps/plugin-dialog');
-			console.log('ダイアログプラグイン読み込み完了');
-			const selected = await open({
-				multiple: false,
-				filters: [{
-					name: 'CSV',
-					extensions: ['csv']
-				}]
-			});
-			console.log('ファイル選択結果:', selected);
-			if (selected) {
-				setPath(selected as string);
-				setStatus(`ファイル「${selected}」が選択されました`);
-			} else {
-				setStatus('ファイル選択がキャンセルされました');
-			}
-		} catch (error) {
-			console.error('ファイル選択エラー:', error);
-			setStatus(`エラー: ${error}`);
-		}
-	};
-
 	if (!isAuthenticated) {
 		return <Navigate to="/login" />;
 	}
 
 	const handleAnalyze = async () => {
 		if (!contentVersionPath.trim() || !contentDocumentLinkPath.trim()) {
-			setStatus("両方のファイルを選択してください");
+			toast.error("両方のファイルを選択してください");
 			return;
 		}
 
 		setIsProcessing(true);
-		setStatus("オブジェクトを分析中...");
+		toast.loading("オブジェクトを分析中...");
 
 		try {
 			const result = await invoke('analyze_csv_files', {
@@ -149,10 +135,11 @@ function FileTransfer() {
 			setSalesforceProperties(defaultProperties);
 			
 			setStep('mapping');
-			setStatus(`${groups.length}種類のオブジェクトを検出しました`);
+			toast.success(`${groups.length}種類のオブジェクトを検出しました`);
 		} catch (error) {
-			setStatus(`エラー: ${error}`);
+			toast.error(`エラー: ${error}`);
 		} finally {
+			toast.dismiss();
 			setIsProcessing(false);
 		}
 	};
@@ -169,7 +156,7 @@ function FileTransfer() {
 		if (isMapping) return;
 
 		setIsMapping(true);
-		setStatus("ファイルマッピングを開始中...");
+		toast.loading("ファイルマッピングを開始中...");
 
 		try {
 			const mappings = Object.entries(objectMapping)
@@ -189,170 +176,218 @@ function FileTransfer() {
 				objectMappings: mappings
 			}) as { message: string };
 
-			setStatus(result.message);
+			toast.success(result.message);
+			setStep('download');
 		} catch (error) {
-			setStatus(`エラー: ${error}`);
+			toast.error(`エラー: ${error}`);
 		} finally {
+			toast.dismiss();
 			setIsMapping(false);
+			setCenterMessage(null);
 		}
 	};
 
-
-
 	return (
-		<div className="p-6">
-			<div className="max-w-2xl mx-auto">
-				<Card>
-					<CardHeader>
-						<CardTitle>Salesforce → HubSpot ファイル転送</CardTitle>
-					</CardHeader>
-					<CardContent>
-						{step === 'files' && (
-							<div className="space-y-6">
-							<div className="space-y-2">
-								<Label>ContentVersion.csv ファイル</Label>
-								<div className="flex gap-2">
-									<Input
-										type="text"
+		<div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
+			<div className="max-w-4xl mx-auto">
+				{/* ステップ進行状況 */}
+				<StepProgress currentStep={step} className="mb-8" />
+
+				{step === 'files' && (
+					<div className="space-y-8 pb-24">
+						{/* ファイル選択セクション */}
+						<Card className="border border-gray-200 shadow-sm rounded-lg">
+							<CardHeader className="pb-4">
+								<CardTitle className="flex items-center gap-2 text-lg">
+									<FolderOpen className="h-5 w-5 text-blue-600" />
+									ファイル選択
+								</CardTitle>
+							</CardHeader>
+							<CardContent className="space-y-6">
+								<div className="grid md:grid-cols-2 gap-6">
+									<FileDropzone
+										label="ContentVersion.csv"
 										value={contentVersionPath}
-										onChange={(e) => setContentVersionPath(e.target.value)}
-										placeholder="ファイルを選択してください"
+										onFileSelect={setContentVersionPath}
 										disabled={isProcessing}
-										className="flex-1"
+										placeholder="ファイル情報のCSVファイル"
 									/>
-									<Button
-										type="button"
-										variant="outline"
-										onClick={() => selectFile(setContentVersionPath)}
+									<FileDropzone
+										label="ContentDocumentLink.csv"
+										value={contentDocumentLinkPath}
+										onFileSelect={setContentDocumentLinkPath}
 										disabled={isProcessing}
-									>
-										選択
-									</Button>
+										placeholder="リンク情報のCSVファイル"
+									/>
 								</div>
-							</div>
 
-							<div className="space-y-2">
-								<Label>ContentDocumentLink.csv ファイル</Label>
-								<div className="flex gap-2">
+								<div className="space-y-2">
+									<Label className="text-sm font-medium text-gray-700">
+										ContentVersion フォルダパス
+									</Label>
 									<Input
 										type="text"
-										value={contentDocumentLinkPath}
-										onChange={(e) => setContentDocumentLinkPath(e.target.value)}
-										placeholder="ファイルを選択してください"
+										value={contentVersionFolderPath}
+										onChange={(e) => setContentVersionFolderPath(e.target.value)}
+										placeholder="/path/to/ContentVersion/folder"
 										disabled={isProcessing}
-										className="flex-1"
+										className="h-11"
 									/>
-									<Button
-										type="button"
-										variant="outline"
-										onClick={() => selectFile(setContentDocumentLinkPath)}
-										disabled={isProcessing}
-									>
-										選択
-									</Button>
 								</div>
-							</div>
+							</CardContent>
+						</Card>
 
-							<div className="space-y-2">
-								<Label>ContentVersion フォルダパス</Label>
-								<Input
-									type="text"
-									value={contentVersionFolderPath}
-									onChange={(e) => setContentVersionFolderPath(e.target.value)}
-									placeholder="ContentVersionフォルダのパスを入力"
-									disabled={isProcessing}
-								/>
-							</div>
+						<FixedActionBar
+							leftButton={{
+								label: "戻る",
+								onClick: () => window.history.back(),
+								disabled: isProcessing
+							}}
+							rightButton={{
+								label: "オブジェクト分析",
+								onClick: handleAnalyze,
+								disabled: isProcessing || !contentVersionPath || !contentDocumentLinkPath,
+								loading: isProcessing
+							}}
+							centerContent={contentVersionPath && contentDocumentLinkPath ? "ファイル選択完了" : "ファイルを選択してください"}
+						/>
+					</div>
+				)}
 
-							{status && (
-								<div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
-									<p className="text-sm text-blue-800">{status}</p>
-								</div>
-							)}
-
-								<div className="flex gap-4">
-									<Button onClick={handleAnalyze} disabled={isProcessing} className="flex-1">
-										{isProcessing ? "分析中..." : "オブジェクト分析"}
-									</Button>
-									<Button 
-										variant="outline" 
-										onClick={() => window.history.back()}
-										disabled={isProcessing}
-									>
-										戻る
-									</Button>
-								</div>
-							</div>
-						)}
-
-						{step === 'mapping' && (
-							<div className="space-y-6">
-								<h3 className="text-lg font-medium">HubSpotオブジェクトマッピング</h3>
-								<div className="space-y-4">
-									{objectGroups.map(group => (
-										<div key={group.prefix} className="p-3 border rounded space-y-3">
-											<div className="flex items-center gap-2">
-												<span className="font-mono text-sm bg-blue-100 px-2 py-1 rounded">{group.prefix}</span>
-												<span className="text-sm text-gray-600">{group.objectName}</span>
-												<span className="text-sm text-gray-500">({group.count.toLocaleString()}件)</span>
-											</div>
-											<div className="grid grid-cols-2 gap-3">
-												<div>
-													<Label className="text-xs">HubSpotオブジェクト</Label>
-													<Select 
-														value={objectMapping[group.prefix] || ""}
-														onValueChange={(value) => handleMappingChange(group.prefix, value)}
-													>
-														<SelectTrigger className="h-8">
-															<SelectValue placeholder="選択" />
-														</SelectTrigger>
-														<SelectContent>
-															{hubspotObjectOptions.map(obj => (
-																<SelectItem key={obj.value} value={obj.value}>{obj.label}</SelectItem>
-															))}
-														</SelectContent>
-													</Select>
-												</div>
-												{objectMapping[group.prefix] !== "none" && (
-													<div>
-														<Label className="text-xs">Salesforceプロパティ名</Label>
-														<Input
-															value={salesforceProperties[group.prefix] || ""}
-															onChange={(e) => handlePropertyChange(group.prefix, e.target.value)}
-															placeholder="salesforce_id"
-															className="h-8 text-sm"
-														/>
-													</div>
-												)}
-											</div>
-										</div>
-									))}
-								</div>
-
-								{status && (
-									<div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
-										<p className="text-sm text-blue-800">{status}</p>
+				{step === 'mapping' && (
+					<div className="space-y-8 pb-24">
+						<Card className="border border-gray-200 shadow-sm rounded-lg">
+							<CardHeader>
+								<div className="flex items-center justify-between">
+									<div>
+										<CardTitle className="text-xl">オブジェクトマッピング設定</CardTitle>
+										<p className="text-gray-600 text-sm mt-1">
+											ContentDocumentLink.csvからオブジェクトごとの関連添付ファイルレコード数を取得しました。<br />
+											マッピングするオブジェクトを選択してください。
+										</p>
 									</div>
-								)}
-
-
-
-								<div className="flex gap-2">
-									<Button 
-										onClick={handleFileMapping}
-										disabled={isMapping} 
-										className="flex-1"
+									<Button
+										variant="outline"
+										size="sm"
+										onClick={() => setShowOnlyMapped(!showOnlyMapped)}
 									>
-										{isMapping ? "マッピング中..." : "ファイルマッピング実行"}
-									</Button>
-									<Button variant="outline" onClick={() => setStep('files')}>
-										戻る
+										{showOnlyMapped ? "全て表示" : "マッピング対象のみ"}
 									</Button>
 								</div>
-							</div>
-						)}
-					</CardContent>
-				</Card>
+							</CardHeader>
+							<CardContent className="space-y-4">
+								{objectGroups
+									.filter(group => !showOnlyMapped || objectMapping[group.prefix] !== "none")
+									.map(group => (
+									<div key={group.prefix} className="bg-gray-50 rounded-md p-4 space-y-3">
+										<div className="flex items-center gap-3">
+											<span className="font-mono text-sm bg-blue-600 text-white px-3 py-1 rounded-full">
+												{group.prefix}
+											</span>
+											<span className="font-medium text-gray-900">{group.objectName}</span>
+											<span className="text-sm text-gray-500 bg-white px-2 py-1 rounded">
+												{group.count.toLocaleString()}件
+											</span>
+										</div>
+										<div className="grid md:grid-cols-2 gap-4">
+											<div>
+												<Label className="text-sm font-medium text-gray-700 mb-2 block">
+													HubSpotオブジェクト
+												</Label>
+												<Select 
+													value={objectMapping[group.prefix] || ""}
+													onValueChange={(value) => handleMappingChange(group.prefix, value)}
+												>
+													<SelectTrigger className="h-10">
+														<SelectValue placeholder="選択してください" />
+													</SelectTrigger>
+													<SelectContent>
+														{hubspotObjectOptions.map(obj => (
+															<SelectItem key={obj.value} value={obj.value}>{obj.label}</SelectItem>
+														))}
+													</SelectContent>
+												</Select>
+											</div>
+											{objectMapping[group.prefix] !== "none" && (
+												<div>
+													<Label className="text-sm font-medium text-gray-700 mb-2 block">
+														Salesforceプロパティ名
+													</Label>
+													<Input
+														value={salesforceProperties[group.prefix] || ""}
+														onChange={(e) => handlePropertyChange(group.prefix, e.target.value)}
+														placeholder="salesforce_id"
+														className="h-10"
+													/>
+												</div>
+											)}
+										</div>
+									</div>
+								))}
+							</CardContent>
+						</Card>
+
+						<FixedActionBar
+							leftButton={{
+								label: "戻る",
+								onClick: () => setStep('files')
+							}}
+							rightButton={{
+								label: "ファイルマッピング実行",
+								onClick: handleFileMapping,
+								disabled: isMapping || Object.values(objectMapping).every(v => v === "none"),
+								loading: isMapping
+							}}
+							centerContent={`マッピング対象: ${Object.values(objectMapping).filter(v => v !== "none").length}件`}
+						/>
+					</div>
+				)}
+
+				{step === 'download' && (
+					<div className="space-y-8 pb-24">
+						<Card className="border border-gray-200 shadow-sm rounded-lg">
+							<CardHeader>
+								<CardTitle className="text-xl text-center">処理完了</CardTitle>
+								<p className="text-gray-600 text-sm text-center mt-2">
+									ファイルマッピングが完了しました。結果をダウンロードしてください。
+								</p>
+							</CardHeader>
+							<CardContent className="text-center space-y-4">
+								<div className="bg-green-50 border border-green-200 rounded-lg p-6">
+									<div className="text-green-600 text-lg font-medium mb-2">
+										✓ マッピング処理が正常に完了しました
+									</div>
+									<p className="text-green-700 text-sm">
+										処理結果のCSVファイルをダウンロードできます
+									</p>
+								</div>
+							</CardContent>
+						</Card>
+
+						<FixedActionBar
+							leftButton={{
+								label: "最初から",
+								onClick: () => {
+									setStep('files');
+									setObjectGroups([]);
+									setObjectMapping({});
+									setSalesforceProperties({});
+									setContentVersionPath("");
+									setContentDocumentLinkPath("");
+									setContentVersionFolderPath("");
+								}
+							}}
+							rightButton={{
+								label: "CSVダウンロード",
+								onClick: () => {
+									// TODO: CSVダウンロード機能を実装
+									toast.info("CSVダウンロード機能は実装予定です");
+								}
+							}}
+							centerContent="処理完了"
+						/>
+					</div>
+				)}
 			</div>
 		</div>
 	);

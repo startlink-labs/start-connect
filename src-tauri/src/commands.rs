@@ -446,7 +446,7 @@ pub async fn analyze_csv_files(
             log::info!("分析完了: {}種類のオブジェクト", object_groups.len());
             Ok(AnalyzeResponse { object_groups })
         }
-        Err(e) => Err(format!("分析エラー: {}", e)),
+        Err(e) => Err(format!("{}", e)),
     }
 }
 

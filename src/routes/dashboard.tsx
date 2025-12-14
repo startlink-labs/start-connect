@@ -19,14 +19,14 @@ function Dashboard() {
 			<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 				<Card>
 					<CardHeader>
-						<CardTitle>ファイル移行</CardTitle>
+						<CardTitle>ファイルマッピング</CardTitle>
 					</CardHeader>
 					<CardContent>
 						<p className="text-gray-600 mb-4">
 							SalesforceのContentVersionとContentDocumentLinkのCSVファイルを処理して、HubSpotにファイルを転送します。
 						</p>
 						<Link to="/file-transfer">
-							<Button className="w-full">ファイル転送を開始</Button>
+							<Button className="w-full">ファイルマッピングを開始</Button>
 						</Link>
 					</CardContent>
 				</Card>
