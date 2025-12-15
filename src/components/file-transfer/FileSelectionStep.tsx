@@ -6,9 +6,11 @@ import { FixedActionBar } from "../FixedActionBar";
 interface FileSelectionStepProps {
   contentVersionPath: string;
   contentDocumentLinkPath: string;
+  contentVersionFolderPath: string;
   isProcessing: boolean;
   onContentVersionPathChange: (path: string) => void;
   onContentDocumentLinkPathChange: (path: string) => void;
+  onContentVersionFolderPathChange: (path: string) => void;
   onAnalyze: () => void;
   onBack: () => void;
 }
@@ -16,9 +18,11 @@ interface FileSelectionStepProps {
 export const FileSelectionStep = ({
   contentVersionPath,
   contentDocumentLinkPath,
+  contentVersionFolderPath,
   isProcessing,
   onContentVersionPathChange,
   onContentDocumentLinkPathChange,
+  onContentVersionFolderPathChange,
   onAnalyze,
   onBack,
 }: FileSelectionStepProps) => {
@@ -32,20 +36,30 @@ export const FileSelectionStep = ({
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="grid md:grid-cols-2 gap-6">
+          <div className="space-y-6">
+            <div className="grid md:grid-cols-2 gap-6">
+              <FileDropzone
+                label="ContentVersion.csv"
+                value={contentVersionPath}
+                onFileSelect={onContentVersionPathChange}
+                disabled={isProcessing}
+                placeholder="ファイル情報のCSVファイル"
+              />
+              <FileDropzone
+                label="ContentDocumentLink.csv"
+                value={contentDocumentLinkPath}
+                onFileSelect={onContentDocumentLinkPathChange}
+                disabled={isProcessing}
+                placeholder="リンク情報のCSVファイル"
+              />
+            </div>
             <FileDropzone
-              label="ContentVersion.csv"
-              value={contentVersionPath}
-              onFileSelect={onContentVersionPathChange}
+              label="ContentVersionフォルダ（オプション）"
+              value={contentVersionFolderPath}
+              onFileSelect={onContentVersionFolderPathChange}
               disabled={isProcessing}
-              placeholder="ファイル情報のCSVファイル"
-            />
-            <FileDropzone
-              label="ContentDocumentLink.csv"
-              value={contentDocumentLinkPath}
-              onFileSelect={onContentDocumentLinkPathChange}
-              disabled={isProcessing}
-              placeholder="リンク情報のCSVファイル"
+              placeholder="VersionDataが空の場合にファイルを読み込むフォルダ"
+              isDirectory
             />
           </div>
         </CardContent>

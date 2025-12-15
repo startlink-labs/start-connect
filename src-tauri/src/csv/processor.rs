@@ -157,6 +157,7 @@ impl CsvProcessor {
   /// # 引数
   /// * `csv_path` - ContentVersion.csvのパス
   /// * `target_records` - 対象レコード情報
+  /// * `content_version_folder` - ContentVersionファイルが格納されているフォルダパス（オプション）
   ///
   /// # 戻り値
   /// (ファイル情報マップ, フィルタリング後のレコード情報)
@@ -164,6 +165,7 @@ impl CsvProcessor {
   pub fn get_file_info_and_filter_records(
     csv_path: &str,
     target_records: &HashMap<String, Vec<(String, String)>>,
+    content_version_folder: Option<&str>,
   ) -> Result<(
     HashMap<String, FileInfo>,
     HashMap<String, Vec<(String, String)>>,
@@ -192,12 +194,59 @@ impl CsvProcessor {
 
       // 対象のContentDocumentIdの場合のみ処理
       if target_content_ids.contains(&record.content_document_id) {
+        let mut version_data = record.version_data;
+
+        // VersionDataが空で、ContentVersionフォルダが指定されている場合
+        if version_data.is_none() && content_version_folder.is_some() {
+          if let Some(folder) = content_version_folder {
+            let file_path = Path::new(folder).join(&record.id);
+            if file_path.exists() {
+              match std::fs::read(&file_path) {
+                Ok(file_bytes) => {
+                  version_data = Some(base64::Engine::encode(
+                    &base64::engine::general_purpose::STANDARD,
+                    file_bytes,
+                  ));
+                  log::debug!(
+                    "ファイルシステムから読み込み: {}",
+                    file_path.display()
+                  );
+                }
+                Err(e) => {
+                  log::warn!(
+                    "ファイル読み込み失敗 {}: {}",
+                    file_path.display(),
+                    e
+                  );
+                }
+              }
+            } else {
+              log::debug!(
+                "ファイルが見つかりません: {}",
+                file_path.display()
+              );
+            }
+          }
+        }
+
+        // PathOnClientから最後のファイル名のみを抽出
+        let path_on_client = if record.path_on_client.contains('/') {
+          record
+            .path_on_client
+            .split('/')
+            .last()
+            .unwrap_or(&record.path_on_client)
+            .to_string()
+        } else {
+          record.path_on_client
+        };
+
         file_info.insert(
           record.content_document_id.clone(),
           FileInfo {
             version_id: record.id,
-            path_on_client: record.path_on_client,
-            version_data: record.version_data,
+            path_on_client,
+            version_data,
           },
         );
         found_content_ids.insert(record.content_document_id);

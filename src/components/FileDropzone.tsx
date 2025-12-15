@@ -12,6 +12,7 @@ interface FileDropzoneProps {
   disabled?: boolean;
   accept?: string;
   label: string;
+  isDirectory?: boolean;
 }
 
 export function FileDropzone({
@@ -20,6 +21,7 @@ export function FileDropzone({
   placeholder = "ファイルを選択またはドロップ",
   disabled = false,
   label,
+  isDirectory = false,
 }: FileDropzoneProps) {
   const [isDragOver, setIsDragOver] = useState(false);
 
@@ -27,20 +29,28 @@ export function FileDropzone({
     try {
       const selected = await open({
         multiple: false,
-        filters: [
-          {
-            name: "CSV",
-            extensions: ["csv"],
-          },
-        ],
+        directory: isDirectory,
+        filters: isDirectory
+          ? undefined
+          : [
+              {
+                name: "CSV",
+                extensions: ["csv"],
+              },
+            ],
       });
       if (selected) {
         onFileSelect(selected as string);
-        toast.success(`ファイルが選択されました: ${selected.split("/").pop()}`);
+        const displayName = selected.split("/").pop();
+        toast.success(
+          `${isDirectory ? "フォルダ" : "ファイル"}が選択されました: ${displayName}`,
+        );
       }
     } catch (error) {
-      console.error("ファイル選択エラー:", error);
-      toast.error("ファイル選択に失敗しました");
+      console.error("選択エラー:", error);
+      toast.error(
+        `${isDirectory ? "フォルダ" : "ファイル"}選択に失敗しました`,
+      );
     }
   };
 
@@ -104,7 +114,7 @@ export function FileDropzone({
             <Upload className="mx-auto h-12 w-12 text-muted-foreground" />
             <div className="mt-4">
               <p className="text-sm font-medium text-foreground">
-                クリックしてファイルを選択
+                クリックして{isDirectory ? "フォルダ" : "ファイル"}を選択
               </p>
               <p className="text-xs text-muted-foreground mt-1">
                 {placeholder}

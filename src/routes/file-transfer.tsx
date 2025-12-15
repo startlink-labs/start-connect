@@ -27,6 +27,7 @@ function FileTransfer() {
   const [downloadCompleted, setDownloadCompleted] = useState(false);
   const [contentVersionPath, setContentVersionPath] = useState("");
   const [contentDocumentLinkPath, setContentDocumentLinkPath] = useState("");
+  const [contentVersionFolderPath, setContentVersionFolderPath] = useState("");
   const [objectMapping, setObjectMapping] = useState<Record<string, string>>(
     {},
   );
@@ -84,6 +85,7 @@ function FileTransfer() {
     await processFileMapping(
       contentVersionPath,
       contentDocumentLinkPath,
+      contentVersionFolderPath,
       mappings,
     );
     setStep("download");
@@ -98,6 +100,7 @@ function FileTransfer() {
     setDownloadCompleted(false);
     setContentVersionPath("");
     setContentDocumentLinkPath("");
+    setContentVersionFolderPath("");
     setObjectMapping({});
     setSalesforceProperties({});
     reset();
@@ -116,9 +119,11 @@ function FileTransfer() {
           <FileSelectionStep
             contentVersionPath={contentVersionPath}
             contentDocumentLinkPath={contentDocumentLinkPath}
+            contentVersionFolderPath={contentVersionFolderPath}
             isProcessing={isProcessing}
             onContentVersionPathChange={setContentVersionPath}
             onContentDocumentLinkPathChange={setContentDocumentLinkPath}
+            onContentVersionFolderPathChange={setContentVersionFolderPath}
             onAnalyze={handleAnalyze}
             onBack={() => window.history.back()}
           />

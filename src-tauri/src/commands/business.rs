@@ -120,11 +120,20 @@ pub async fn process_file_mapping(
   emit_progress("file_info", 35, "ファイル情報を取得中...");
 
   // 4. ファイル情報を取得してレコードをフィルタリング
-  let (file_info, filtered_target_records) =
-    match CsvProcessor::get_file_info_and_filter_records(&content_version_path, &target_records) {
-      Ok(result) => result,
-      Err(e) => return Err(format!("ファイル情報取得エラー: {}", e)),
-    };
+  let content_folder = if content_version_folder_path.is_empty() {
+    None
+  } else {
+    Some(content_version_folder_path.as_str())
+  };
+
+  let (file_info, filtered_target_records) = match CsvProcessor::get_file_info_and_filter_records(
+    &content_version_path,
+    &target_records,
+    content_folder,
+  ) {
+    Ok(result) => result,
+    Err(e) => return Err(format!("ファイル情報取得エラー: {}", e)),
+  };
 
   log::info!("ファイル情報: {}件", file_info.len());
 
