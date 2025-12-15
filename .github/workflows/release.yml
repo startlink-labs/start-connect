@@ -15,6 +15,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    outputs:
+      commit-sha: ${{ steps.commit.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -34,15 +36,19 @@ jobs:
           sed -i "/^name = \"start-connect\"$/,/^version = / s/^version = \".*\"/version = \"$VERSION\"/" src-tauri/Cargo.lock
 
       - name: Commit and push
+        id: commit
         run: |
           git add src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock package.json
           git commit -m "🚀 [RELEASE] v${{ github.event.inputs.version }}"
           git push origin main
+          echo "sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
 
   release:
     needs: bump-version
     permissions:
       contents: write
+    outputs:
+      commit-sha: ${{ needs.bump-version.outputs.commit-sha }}
     strategy:
       fail-fast: false
       matrix:
@@ -58,11 +64,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
-          fetch-depth: 0
-      
-      - name: Pull latest changes
-        run: git pull origin main
+          ref: ${{ needs.bump-version.outputs.commit-sha }}
 
       - name: Setup mise
         uses: jdx/mise-action@v2
