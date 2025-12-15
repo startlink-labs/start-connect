@@ -10,7 +10,7 @@
     "open:build": "open './src-tauri/target/release/bundle/macos/SF-HS File Transfer.app'",
     "run:debug": "./src-tauri/target/debug/bundle/macos/SF-HS\\ File\\ Transfer.app/Contents/MacOS/sf-hs-file-trans-app",
     "vite": "vite",
-    "vite:build": "tsc -b && vite build",
+    "vite:build": "vite build && tsc -b",
     "lint": "biome check .",
     "lint:rust": "cd src-tauri && cargo clippy -- -D warnings",
     "format": "biome format --write .",

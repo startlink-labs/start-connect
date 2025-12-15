@@ -65,9 +65,9 @@
       }
     },
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDgxOUNFNjg0OEU3NDM3QkMKUldTOE4zU09oT2FjZ1d3S2pvRzJMSWdpZUZhZGx0QnluM0IxU2haSGdWTCttblVBUktVYnpUZGMK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQzQTA4MTEzNDdFNTU2MEUKUldRT1Z1VkhFNEdnMDdDL2pxUklxN25tODJjUlA4aVFIS0FFVEwwdGFZYjc4VkdITFg2bmJPQ08K",
       "endpoints": [
-        "https://github.com/{{owner}}/{{repo}}/releases/latest/download/latest.json"
+        "https://github.com/startlink-labs/file-trans-app/releases/latest/download/latest.json"
       ]
     }
   }
