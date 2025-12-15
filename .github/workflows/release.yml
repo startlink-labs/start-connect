@@ -1,14 +1,46 @@
 name: Release
+run-name: 🚀 Release v${{ github.event.inputs.version }}
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'src-tauri/tauri.conf.json'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version (e.g., 1.0.0)'
+        required: true
+        type: string
 
 jobs:
+  bump-version:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump version
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json
+          sed -i "s/^version = \".*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
+          sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" package.json
+          sed -i "/^name = \"start-connect\"$/,/^version = / s/^version = \".*\"/version = \"$VERSION\"/" src-tauri/Cargo.lock
+
+      - name: Commit and push
+        run: |
+          git add src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock package.json
+          git commit -m "🚀 [RELEASE] v${{ github.event.inputs.version }}"
+          git push origin main
+
   release:
+    needs: bump-version
     permissions:
       contents: write
     strategy:
@@ -25,6 +57,8 @@ jobs:
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Setup mise
         uses: jdx/mise-action@v2
