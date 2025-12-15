@@ -1,6 +1,6 @@
 [package]
 name = "start-connect"
-version = "0.1.7"
+version = "0.1.8"
 description = "Salesforce to HubSpot File Transfer Application"
 authors = ["you"]
 license = ""
