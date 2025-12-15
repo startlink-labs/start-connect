@@ -498,7 +498,7 @@ pub async fn analyze_csv_files(
 ) -> Result<AnalyzeResponse, String> {
   log::info!("ファイル分析開始");
 
-  // CSVファイルの存在確認
+  // CSVファイルの存在とカラムをバリデーション
   if let Err(e) =
     CsvProcessor::validate_csv_files(&content_version_path, &content_document_link_path)
   {

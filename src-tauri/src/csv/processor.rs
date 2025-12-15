@@ -307,11 +307,12 @@ impl CsvProcessor {
       .collect()
   }
 
-  /// CSVファイルが存在するかチェック
+  /// CSVファイルの存在とカラムをバリデーション
   pub fn validate_csv_files(
     content_version_path: &str,
     content_document_link_path: &str,
   ) -> Result<()> {
+    // ファイルの存在確認
     if !Path::new(content_version_path).exists() {
       return Err(anyhow!(
         "ContentVersion.csvが見つかりません: {}",
@@ -326,6 +327,39 @@ impl CsvProcessor {
       ));
     }
 
+    // ContentVersion.csvの必須カラムチェック
+    let required_cv_columns = vec!["Id", "ContentDocumentId", "PathOnClient"];
+    let mut cv_reader = ReaderBuilder::new()
+      .has_headers(true)
+      .from_path(content_version_path)?;
+    let cv_headers = cv_reader.headers()?;
+
+    for required_col in &required_cv_columns {
+      if !cv_headers.iter().any(|h| h == *required_col) {
+        return Err(anyhow!(
+          "ContentVersion.csvに必須カラムがありません: {}",
+          required_col
+        ));
+      }
+    }
+
+    // ContentDocumentLink.csvの必須カラムチェック
+    let required_cdl_columns = vec!["LinkedEntityId", "ContentDocumentId"];
+    let mut cdl_reader = ReaderBuilder::new()
+      .has_headers(true)
+      .from_path(content_document_link_path)?;
+    let cdl_headers = cdl_reader.headers()?;
+
+    for required_col in &required_cdl_columns {
+      if !cdl_headers.iter().any(|h| h == *required_col) {
+        return Err(anyhow!(
+          "ContentDocumentLink.csvに必須カラムがありません: {}",
+          required_col
+        ));
+      }
+    }
+
+    log::info!("CSVバリデーション成功");
     Ok(())
   }
 
