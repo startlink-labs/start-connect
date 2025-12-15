@@ -10,7 +10,24 @@ on:
         type: string
 
 jobs:
+  check-ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Check CI status
+        run: |
+          STATUS=$(gh run list --workflow=ci.yml --branch=main --limit=1 --json conclusion --jq '.[0].conclusion')
+          if [ "$STATUS" != "success" ]; then
+            echo "❌ CI must pass before release (status: $STATUS)"
+            exit 1
+          fi
+          echo "✅ CI passed"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   bump-version:
+    needs: check-ci
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
