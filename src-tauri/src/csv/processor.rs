@@ -207,24 +207,14 @@ impl CsvProcessor {
                     &base64::engine::general_purpose::STANDARD,
                     file_bytes,
                   ));
-                  log::debug!(
-                    "ファイルシステムから読み込み: {}",
-                    file_path.display()
-                  );
+                  log::debug!("ファイルシステムから読み込み: {}", file_path.display());
                 }
                 Err(e) => {
-                  log::warn!(
-                    "ファイル読み込み失敗 {}: {}",
-                    file_path.display(),
-                    e
-                  );
+                  log::warn!("ファイル読み込み失敗 {}: {}", file_path.display(), e);
                 }
               }
             } else {
-              log::debug!(
-                "ファイルが見つかりません: {}",
-                file_path.display()
-              );
+              log::debug!("ファイルが見つかりません: {}", file_path.display());
             }
           }
         }
@@ -234,7 +224,7 @@ impl CsvProcessor {
           record
             .path_on_client
             .split('/')
-            .last()
+            .next_back()
             .unwrap_or(&record.path_on_client)
             .to_string()
         } else {

@@ -48,9 +48,7 @@ export function FileDropzone({
       }
     } catch (error) {
       console.error("選択エラー:", error);
-      toast.error(
-        `${isDirectory ? "フォルダ" : "ファイル"}選択に失敗しました`,
-      );
+      toast.error(`${isDirectory ? "フォルダ" : "ファイル"}選択に失敗しました`);
     }
   };
 
