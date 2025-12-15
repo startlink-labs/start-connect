@@ -54,14 +54,19 @@ pub fn run() {
       pending_auth: std::sync::Mutex::new(None),
     })
     .setup(|app| {
-      // デバッグビルド時のみログプラグインを有効化
-      if cfg!(debug_assertions) {
-        app.handle().plugin(
-          tauri_plugin_log::Builder::default()
-            .level(log::LevelFilter::Debug)
-            .build(),
-        )?;
-      }
+      // ログプラグインを設定（本番でも有効）
+      app.handle().plugin(
+        tauri_plugin_log::Builder::new()
+          .level(if cfg!(debug_assertions) {
+            log::LevelFilter::Debug
+          } else {
+            log::LevelFilter::Info
+          })
+          .build(),
+      )?;
+
+      log::info!("StartConnect v{} started", env!("CARGO_PKG_VERSION"));
+      log::info!("OS: {} {}", std::env::consts::OS, std::env::consts::ARCH);
 
       // Deep Link処理をRust側で実装
       // アプリ起動時のDeep Linkを処理
