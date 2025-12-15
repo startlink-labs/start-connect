@@ -1,6 +1,6 @@
-# SF-HS File Transfer App
+# StartConnect
 
-Salesforce to HubSpot ファイル転送デスクトップアプリケーション
+Salesforce to HubSpot データ連携デスクトップアプリケーション
 
 ## 技術スタック
 

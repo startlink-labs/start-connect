@@ -1,6 +1,6 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "SF-HS File Transfer",
+  "productName": "StartConnect",
   "version": "0.1.0",
   "identifier": "com.startlink.sf-hs-file-trans",
   "build": {
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "SF-HS File Transfer - produced by StartLink Inc.",
+        "title": "StartConnect - produced by StartLink Inc.",
         "width": 1280,
         "height": 720,
         "resizable": true,
