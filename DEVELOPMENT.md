@@ -1,10 +1,33 @@
 # 開発ガイド
 
-## 初回セットアップ
+## 技術スタック
 
-### 1. 環境変数の設定
+- **フロントエンド**: React 19 + TypeScript + Vite + TanStack Router/Query
+- **バックエンド**: Rust (Tauri 2)
+- **スタイリング**: Tailwind CSS 4 + shadcn/ui
+- **認証**: OAuth 2.0 (Cloudflare Workers)
+- **ツール**: pnpm + mise + Biome
 
-#### Tauri（デスクトップアプリ）
+## 環境構築
+
+### 必須ツール
+
+```bash
+# miseのインストール
+# macOS (Homebrew)
+brew install mise
+
+# macOS/Linux (公式インストーラー)
+curl https://mise.run | sh
+
+# 依存関係のインストール
+mise install
+mise exec -- pnpm install
+```
+
+### 環境変数設定
+
+#### 1. Tauri（デスクトップアプリ）
 
 ```bash
 cd src-tauri/.cargo
@@ -12,104 +35,123 @@ cp config.toml.example config.toml
 ```
 
 `config.toml`を編集：
-
 ```toml
 [env]
-HUBSPOT_CLIENT_ID = "your_actual_client_id"
-OAUTH_WORKER_URL = "https://hubspot-oauth-proxy.stlb-file-trans.workers.dev"
+HUBSPOT_CLIENT_ID = "your_client_id"
+OAUTH_WORKER_URL = "https://your-worker.workers.dev"
+TAURI_SIGNING_PRIVATE_KEY = "ask_project_owner"
+TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "ask_project_owner"
 ```
 
-#### Cloudflare Workers
+**重要**: 署名鍵情報はプロジェクト責任者に確認してください。
+
+#### 2. Cloudflare Workers（OAuth Proxy）
 
 ```bash
 cd cloudflare-workers
 
-# Client IDを設定
-mise exec -- pnpm wrangler secret put HUBSPOT_CLIENT_ID
+# npmスクリプトを使用（推奨）
+mise exec -- pnpm run set-env:client
+mise exec -- pnpm run set-env:secret
 
-# Client Secretを設定
+# または直接実行
+mise exec -- pnpm wrangler secret put HUBSPOT_CLIENT_ID
 mise exec -- pnpm wrangler secret put HUBSPOT_CLIENT_SECRET
 ```
 
-### 2. HubSpot公開アプリ設定
+#### 3. HubSpot公開アプリ
 
-1. HubSpot Developer Accountで公開アプリを作成
-2. **Redirect URI**: `https://hubspot-oauth-proxy.stlb-file-trans.workers.dev/oauth/callback`
-3. **必要なScopes**: `oauth`, `crm.objects.*`, `crm.schemas.*`, `files`, `tickets`
-4. Client IDとClient Secretを取得
+1. [HubSpot Developer Account](https://developers.hubspot.com/)でアプリ作成
+2. **Redirect URI**: `https://your-worker.workers.dev/oauth/callback`
+3. **Scopes**: `oauth`, `crm.objects.*`, `crm.schemas.*`, `files`, `tickets`
 
-## 開発
+## 開発コマンド
 
-### 開発サーバー起動
+### 基本
 
 ```bash
+# 開発サーバー起動（ホットリロード）
 mise exec -- pnpm dev
+
+# デバッグビルド（OAuth認証テスト用）
+mise exec -- pnpm build:debug
+
+# 本番ビルド
+mise exec -- pnpm build
 ```
 
-**注意**: 開発モードではDeep Linkが動作しないため、OAuth認証をテストできません。
+### コード品質
+
+```bash
+# 型チェック
+mise exec -- pnpm exec tsc --noEmit
+
+# リント
+mise exec -- pnpm lint          # フロントエンド
+mise exec -- pnpm lint:rust     # Rust
+
+# フォーマット
+mise exec -- pnpm format        # フロントエンド
+mise exec -- pnpm format:rust   # Rust
+mise exec -- pnpm format:all    # 全て
+
+# テスト
+mise exec -- pnpm test
+mise exec -- pnpm test:ui       # UI付き
+```
+
+### Cloudflare Workers
+
+```bash
+cd cloudflare-workers
+
+# ローカル開発
+mise exec -- pnpm dev
+
+# デプロイ
+mise exec -- pnpm deploy
+```
+
+## プロジェクト構成
+
+```
+.
+├── src/                    # フロントエンド（React）
+│   ├── routes/            # TanStack Router（ファイルベース）
+│   ├── components/        # UIコンポーネント
+│   ├── hooks/             # カスタムフック
+│   ├── stores/            # Zustand状態管理
+│   └── lib/               # ユーティリティ
+├── src-tauri/             # バックエンド（Rust）
+│   ├── src/               # Rustソースコード
+│   └── .cargo/config.toml # 環境変数（Git管理外）
+├── cloudflare-workers/    # OAuth Proxy
+├── hsapp/                 # HubSpot Project（オプション）
+└── scripts/               # ビルドスクリプト
+```
+
+## 開発フロー
 
 ### OAuth認証のテスト
 
-OAuth認証をテストするには**デバッグビルド**を使用：
+**重要**: 開発モード（`pnpm dev`）ではDeep Linkが動作しないため、OAuth認証をテストできません。
 
 ```bash
-# デバッグビルド&実行
+# デバッグビルドを使用
 mise exec -- pnpm build:debug
 ```
 
 これでRust側のログが表示され、Deep Linkも動作します。
 
-## ビルド
+### ビルド成果物
 
-### デバッグビルド（開発用）
-
-```bash
-mise exec -- pnpm build:debug
-```
-
-### 本番ビルド
-
-```bash
-mise exec -- pnpm build
-```
-
-ビルド成果物：
 - **macOS**: `src-tauri/target/release/bundle/dmg/*.dmg`
 - **Windows**: `src-tauri/target/release/bundle/msi/*.msi`
 - **Linux**: `src-tauri/target/release/bundle/appimage/*.AppImage`
 
-## テスト
-
-### 型チェック
-
-```bash
-mise exec -- pnpm exec tsc --noEmit
-```
-
-### リント・フォーマット
-
-```bash
-# フロントエンド
-mise exec -- pnpm lint
-mise exec -- pnpm format
-
-# Rust
-mise exec -- pnpm lint:rust
-mise exec -- pnpm format:rust
-
-# 全て
-mise exec -- pnpm format:all
-```
-
-### ユニットテスト
-
-```bash
-mise exec -- pnpm test
-```
-
 ## トラブルシューティング
 
-### 環境変数が読み込まれない
+### 環境変数が反映されない
 
 ```bash
 cd src-tauri
@@ -117,25 +159,24 @@ cargo clean
 mise exec -- cargo build
 ```
 
-### OAuth認証が失敗する
+### OAuth認証エラー
 
-1. Cloudflare Workerが動作しているか確認：
+1. Workerの動作確認:
 ```bash
-curl https://hubspot-oauth-proxy.stlb-file-trans.workers.dev/health
+curl https://your-worker.workers.dev/health
 ```
 
-2. デバッグビルドでログを確認：
+2. デバッグログ確認:
 ```bash
 mise exec -- pnpm build:debug
-mise exec -- pnpm run:debug
 ```
 
-3. HubSpotアプリのRedirect URIが正しいか確認
+3. HubSpotアプリのRedirect URI確認
 
-### Deep Linkが動作しない（macOS）
+### Deep Link未登録（macOS）
 
 ```bash
-# Deep Link登録を確認
+# 登録確認
 /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister -dump | grep sfhsfiletrans
 
 # 再ビルド
@@ -143,27 +184,47 @@ rm -rf src-tauri/target/release/bundle
 mise exec -- pnpm build:debug
 ```
 
-## 配布
+### pnpm/cargo/nodeコマンドが見つからない
 
-### 配布前チェックリスト
+必ず`mise exec --`を使用:
+```bash
+mise exec -- pnpm install
+mise exec -- cargo build
+```
 
-- [ ] HubSpot公開アプリが作成済み
-- [ ] Cloudflare Workersがデプロイ済み
-- [ ] 環境変数が正しく設定されている
-- [ ] 本番ビルドが成功する
-- [ ] OAuth認証が動作する
-- [ ] 各OSでの動作確認
+## リリース
 
-### セキュリティ
+### 手動リリース
 
-- **Client ID**: バイナリに埋め込まれる（公開情報）
-- **Client Secret**: Cloudflare Workersの環境変数として保護
-- **アクセストークン**: OSのキーチェーンに安全に保存
+```bash
+# バージョン更新
+./scripts/bump-version.sh 1.0.0
+```
 
-### エンドユーザーの使用フロー
+### 自動リリース（GitHub Actions）
 
-1. アプリをインストール
-2. 「HubSpotでログイン」をクリック
-3. ブラウザでHubSpot認証
-4. 自動的にアプリに戻る
-5. トークンは自動的にリフレッシュされる
+1. GitHubの**Actions**タブ
+2. **Release**ワークフロー選択
+3. **Run workflow** → バージョン入力
+4. 自動でビルド・リリース作成
+
+### 必要なGitHub Secrets
+
+- `TAURI_SIGNING_PRIVATE_KEY`
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
+- `HUBSPOT_CLIENT_ID`
+- `OAUTH_WORKER_URL`
+
+## セキュリティ
+
+- **Client ID**: バイナリに埋め込み（公開情報）
+- **Client Secret**: Cloudflare Workersで保護
+- **Access Token**: OSキーチェーンに暗号化保存
+- **自動更新**: コード署名で検証
+
+## 参考リンク
+
+- [Tauri Documentation](https://tauri.app/)
+- [TanStack Router](https://tanstack.com/router)
+- [Cloudflare Workers](https://developers.cloudflare.com/workers/)
+- [HubSpot API](https://developers.hubspot.com/docs/api/overview)
