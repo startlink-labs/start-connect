@@ -80,5 +80,5 @@ excluded_tools: []
 # (contrary to the memories, which are loaded on demand).
 initial_prompt: ""
 
-project_name: "sf-hs-file-trans-app"
+project_name: "start-connect"
 included_optional_tools: []

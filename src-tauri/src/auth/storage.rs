@@ -2,7 +2,7 @@ use anyhow::Result;
 use keyring::Entry;
 use serde::{Deserialize, Serialize};
 
-const SERVICE_NAME: &str = "sf-hs-file-trans-app";
+const SERVICE_NAME: &str = "start-connect";
 const CREDENTIALS_KEY: &str = "credentials";
 
 const OAUTH_WORKER_URL: &str = match option_env!("OAUTH_WORKER_URL") {

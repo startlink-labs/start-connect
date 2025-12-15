@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "StartConnect",
-  "version": "0.1.1",
-  "identifier": "com.startlink.sf-hs-file-trans",
+  "version": "0.1.2",
+  "identifier": "com.startlink.start-connect",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
@@ -38,7 +38,8 @@
             "shell:allow-open",
             "core:event:default",
             "deep-link:default",
-            "updater:default"
+            "updater:default",
+            "process:allow-restart"
           ]
         }
       ]
@@ -67,7 +68,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQzQTA4MTEzNDdFNTU2MEUKUldRT1Z1VkhFNEdnMDdDL2pxUklxN25tODJjUlA4aVFIS0FFVEwwdGFZYjc4VkdITFg2bmJPQ08K",
       "endpoints": [
-        "https://github.com/startlink-labs/file-trans-app/releases/latest/download/latest.json"
+        "https://github.com/startlink-labs/start-connect/releases/latest/download/latest.json"
       ]
     }
   }

@@ -1,6 +1,6 @@
 [package]
-name = "sf-hs-file-trans-app"
-version = "0.1.0"
+name = "start-connect"
+version = "0.1.2"
 description = "Salesforce to HubSpot File Transfer Application"
 authors = ["you"]
 license = ""
@@ -54,6 +54,10 @@ percent-encoding = "2.3"
 # base64エンコード/デコード
 base64 = "0.22"
 # キーチェーン管理
-keyring = { version = "3.6", features = ["apple-native", "windows-native", "linux-native"] }
+keyring = { version = "3.6", features = [
+    "apple-native",
+    "windows-native",
+    "linux-native",
+] }
 # ランダム文字列生成
 rand = "0.8"

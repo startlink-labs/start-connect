@@ -4,19 +4,20 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 export function useUpdater() {
-  const [checking, setChecking] = useState(false);
+  const [hasChecked, setHasChecked] = useState(false);
 
   const checkForUpdates = useCallback(async () => {
-    if (checking) return;
+    if (hasChecked) return;
 
     try {
-      setChecking(true);
+      setHasChecked(true);
+      console.log("Checking for updates...");
       const update = await check();
+      console.log("Update check result:", update);
 
-      if (update?.available) {
-        toast.info(`新しいバージョン ${update.version} が利用可能です`, {
-          description: update.body || "更新内容を確認してください",
-          duration: Number.POSITIVE_INFINITY,
+      if (update) {
+        toast.info(`v${update.version} が利用可能`, {
+          duration: 30000,
           action: {
             label: "今すぐ更新",
             onClick: async () => {
@@ -33,23 +34,23 @@ export function useUpdater() {
             },
           },
           cancel: {
-            label: "次回起動時に更新",
+            label: "後で",
             onClick: () => {
               toast.dismiss();
             },
           },
         });
+      } else {
+        console.log("No updates available");
       }
     } catch (error) {
       console.error("Update check failed:", error);
-    } finally {
-      setChecking(false);
     }
-  }, [checking]);
+  }, [hasChecked]);
 
   useEffect(() => {
     checkForUpdates();
   }, [checkForUpdates]);
 
-  return { checkForUpdates, checking };
+  return { checkForUpdates, hasChecked };
 }

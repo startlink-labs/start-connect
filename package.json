@@ -1,14 +1,14 @@
 {
   "name": "frontend",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.2",
   "type": "module",
   "scripts": {
     "dev": "tauri dev",
     "build": "tauri build && pnpm run open:build",
     "build:debug": "tauri build --debug && pnpm run run:debug",
     "open:build": "open './src-tauri/target/release/bundle/macos/StartConnect.app'",
-    "run:debug": "./src-tauri/target/debug/bundle/macos/StartConnect.app/Contents/MacOS/sf-hs-file-trans-app",
+    "run:debug": "./src-tauri/target/debug/bundle/macos/StartConnect.app/Contents/MacOS/start-connect",
     "vite": "vite",
     "vite:build": "vite build && tsc -b",
     "lint": "biome check .",
@@ -18,7 +18,8 @@
     "format:all": "pnpm format && pnpm format:rust",
     "test": "vitest",
     "test:ui": "vitest --ui",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "bump": "./scripts/bump-version.sh"
   },
   "dependencies": {
     "@radix-ui/react-alert-dialog": "^1.1.15",
