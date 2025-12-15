@@ -25,12 +25,6 @@ pub struct ContentVersionRecord {
   /// コンテンツドキュメントID
   #[serde(rename = "ContentDocumentId")]
   pub content_document_id: String,
-  /// ファイルタイトル
-  #[serde(rename = "Title")]
-  pub title: String,
-  /// ファイル拡張子
-  #[serde(rename = "FileExtension")]
-  pub file_extension: String,
   /// クライアント上のパス
   #[serde(rename = "PathOnClient")]
   pub path_on_client: String,
@@ -44,10 +38,6 @@ pub struct ContentVersionRecord {
 pub struct FileInfo {
   /// バージョンID
   pub version_id: String,
-  /// ファイルタイトル
-  pub title: String,
-  /// ファイル拡張子
-  pub file_extension: String,
   /// クライアント上のパス
   pub path_on_client: String,
   /// バージョンデータ（base64）
@@ -206,8 +196,6 @@ impl CsvProcessor {
           record.content_document_id.clone(),
           FileInfo {
             version_id: record.id,
-            title: record.title,
-            file_extension: record.file_extension,
             path_on_client: record.path_on_client,
             version_data: record.version_data,
           },
