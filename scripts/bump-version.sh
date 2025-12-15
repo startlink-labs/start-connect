@@ -17,10 +17,13 @@ sed -i '' "s/^version = \".*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
 # Update package.json
 sed -i '' "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" package.json
 
+# Update Cargo.lock
+sed -i '' "/^name = \"start-connect\"$/,/^version = / s/^version = \".*\"/version = \"$VERSION\"/" src-tauri/Cargo.lock
+
 echo "✅ Updated to v$VERSION"
 
 # Git add, commit, and push
-git add src-tauri/tauri.conf.json src-tauri/Cargo.toml package.json
+git add src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock package.json
 git commit -m "chore: release v$VERSION"
 git push origin main
 
