@@ -609,6 +609,7 @@ pub async fn analyze_chatter_files(
 
 /// Chatter移行処理のメインコマンド
 #[command]
+#[allow(clippy::too_many_arguments)]
 pub async fn process_chatter_migration(
   feed_item_path: String,
   feed_comment_path: String,
@@ -858,7 +859,61 @@ pub async fn process_chatter_migration(
     &hubspot_record_cache,
     content_document_links,
     feed_attachments,
+    &content_version_to_document,
   );
+
+  // コメントの添付ファイルIDを追加で収集してfile_infoを補完
+  let mut file_info = file_info;
+  if !content_version_path.is_empty() {
+    let mut comment_attachment_ids = HashSet::new();
+    for record in &processable_records {
+      for feed_item_with_comments in &record.feed_items {
+        for comment_files in feed_item_with_comments.comment_attachments.values() {
+          comment_attachment_ids.extend(comment_files.clone());
+        }
+      }
+    }
+
+    // 既に読み込み済みのIDを除外
+    comment_attachment_ids.retain(|id| !file_info.contains_key(id));
+
+    if !comment_attachment_ids.is_empty() {
+      log::info!(
+        "コメント添付ファイルを追加読み込み: {}件",
+        comment_attachment_ids.len()
+      );
+
+      let mut reader = csv::ReaderBuilder::new()
+        .has_headers(true)
+        .from_path(&content_version_path)
+        .map_err(|e| format!("ContentVersion追加読み込みエラー: {}", e))?;
+
+      for result in reader.deserialize() {
+        let record: crate::csv::processor::ContentVersionRecord =
+          result.map_err(|e| format!("ContentVersionパースエラー: {}", e))?;
+
+        if comment_attachment_ids.contains(&record.content_document_id) {
+          let filename = record
+            .path_on_client
+            .split('/')
+            .next_back()
+            .unwrap_or(&record.path_on_client);
+          file_info.insert(
+            record.content_document_id.clone(),
+            crate::csv::processor::FileInfo {
+              version_id: record.id,
+              path_on_client: filename.to_string(),
+              version_data: record.version_data,
+            },
+          );
+        }
+      }
+      log::info!(
+        "ContentVersion読み込み完了(追加分含む): {}件",
+        file_info.len()
+      );
+    }
+  }
 
   // ノート作成処理
   for (i, record) in processable_records.iter().enumerate() {
@@ -904,9 +959,18 @@ pub async fn process_chatter_migration(
       let mut notes_created = 0;
 
       for feed_item_with_comments in &record.feed_items {
-        // 添付ファイルをアップロード
-        let mut file_ids = Vec::new();
-        for content_doc_id in &feed_item_with_comments.attachment_content_document_ids {
+        // 添付ファイルをアップロードし、ContentDocumentId→HubSpot FileIdのマッピングを作成
+        let mut content_doc_to_hubspot_file: HashMap<String, (String, String)> = HashMap::new();
+        let mut all_attachment_ids = feed_item_with_comments.feed_item_attachment_ids.clone();
+
+        // コメントの添付ファイルも追加
+        for comment_files in feed_item_with_comments.comment_attachments.values() {
+          all_attachment_ids.extend(comment_files.clone());
+        }
+        all_attachment_ids.sort();
+        all_attachment_ids.dedup();
+
+        for content_doc_id in &all_attachment_ids {
           if let Some(file_data) = file_info.get(content_doc_id) {
             if let Some(version_data) = &file_data.version_data {
               let filename = if let Some(dot_pos) = file_data.path_on_client.rfind('.') {
@@ -916,33 +980,90 @@ pub async fn process_chatter_migration(
                 format!("{}_{}", file_data.path_on_client, file_data.version_id)
               };
 
+              // HubSpotでファイル存在確認
               match hubspot_service
-                .upload_file_from_base64(version_data, &filename)
+                .get_file_by_path(&format!("salesforce/{}", filename))
                 .await
               {
-                Ok(file_id) => {
-                  file_ids.push(file_id);
-                  log::debug!("アップロード成功: {}", filename);
+                Ok(Some(existing_file)) => {
+                  content_doc_to_hubspot_file.insert(
+                    content_doc_id.clone(),
+                    (existing_file.id, file_data.path_on_client.clone()),
+                  );
+                  log::debug!("ファイルが既に存在: {}", filename);
+                }
+                Ok(None) => {
+                  // アップロード
+                  match hubspot_service
+                    .upload_file_from_base64(version_data, &filename)
+                    .await
+                  {
+                    Ok(file_id) => {
+                      content_doc_to_hubspot_file.insert(
+                        content_doc_id.clone(),
+                        (file_id, file_data.path_on_client.clone()),
+                      );
+                      log::debug!("アップロード成功: {}", filename);
+                    }
+                    Err(e) => {
+                      log::warn!("アップロード失敗 {}: {}", filename, e);
+                    }
+                  }
                 }
                 Err(e) => {
-                  log::warn!("アップロード失敗 {}: {}", filename, e);
+                  log::warn!("ファイル確認エラー {}: {}", filename, e);
                 }
               }
             }
           }
         }
 
-        let note_html = generate_chatter_note_html(feed_item_with_comments, &users);
+        // FeedItemとコメントの全添付ファイルIDを収集
+        let mut all_file_ids: Vec<String> = Vec::new();
+
+        // FeedItemの添付ファイル
+        for doc_id in &feed_item_with_comments.feed_item_attachment_ids {
+          if let Some((file_id, _)) = content_doc_to_hubspot_file.get(doc_id) {
+            all_file_ids.push(file_id.clone());
+          }
+        }
+
+        // コメントの添付ファイル
+        for comment_files in feed_item_with_comments.comment_attachments.values() {
+          for doc_id in comment_files {
+            if let Some((file_id, _)) = content_doc_to_hubspot_file.get(doc_id) {
+              all_file_ids.push(file_id.clone());
+            }
+          }
+        }
+
+        // 重複を削除
+        all_file_ids.sort();
+        all_file_ids.dedup();
+
+        log::info!(
+          "FeedItem {} の全添付ファイル: {}件",
+          feed_item_with_comments.feed_item.id,
+          all_file_ids.len()
+        );
+
+        let note_html = generate_chatter_note_html(
+          feed_item_with_comments,
+          &users,
+          &content_doc_to_hubspot_file,
+          &portal_id,
+          &ui_domain,
+        );
 
         match hubspot_service
           .create_note_for_record(
             &hubspot_record_id,
             &mapping.hubspot_object,
             &note_html,
-            if file_ids.is_empty() {
+            if all_file_ids.is_empty() {
               None
             } else {
-              Some(file_ids)
+              Some(all_file_ids)
             },
           )
           .await
@@ -1010,11 +1131,13 @@ pub async fn process_chatter_migration(
 fn generate_chatter_note_html(
   feed_item_with_comments: &crate::csv::processor::FeedItemWithComments,
   users: &HashMap<String, crate::csv::processor::UserRecord>,
+  content_doc_to_hubspot_file: &HashMap<String, (String, String)>,
+  portal_id: &str,
+  ui_domain: &str,
 ) -> String {
   let feed_item = &feed_item_with_comments.feed_item;
   let comments = &feed_item_with_comments.comments;
 
-  // 日時を整形 (ISO 8601 -> 読みやすい形式)
   let format_date = |date_str: &str| -> String {
     date_str
       .replace('T', " ")
@@ -1025,7 +1148,6 @@ fn generate_chatter_note_html(
       .to_string()
   };
 
-  // ユーザー情報を取得して表示名を生成
   let format_user = |user_id: &str| -> String {
     if let Some(user) = users.get(user_id) {
       format!("{} ({})", user.name, user.username)
@@ -1034,9 +1156,26 @@ fn generate_chatter_note_html(
     }
   };
 
+  // インライン画像をHubSpotリンクに置換
+  let replace_inline_images = |body: &str| -> String {
+    let mut result = body.to_string();
+    for (content_doc_id, (file_id, _filename)) in content_doc_to_hubspot_file {
+      let hubspot_url = format!(
+        "https://{}/file-preview/{}/file/{}/",
+        ui_domain, portal_id, file_id
+      );
+      // sfdc://069xxx を HubSpotリンクに置換
+      result = result.replace(&format!("sfdc://{}", content_doc_id), &hubspot_url);
+      // ContentDocumentIdそのものも置換（インライン画像の場合）
+      if result.contains(content_doc_id) {
+        result = result.replace(content_doc_id, &hubspot_url);
+      }
+    }
+    result
+  };
+
   let mut html = String::new();
 
-  // ヘッダー
   html.push_str("<p style=\"font-size: 10px; color: #999; margin: 0 0 12px 0;\">Chatter投稿</p>");
 
   // 投稿本文
@@ -1048,7 +1187,28 @@ fn generate_chatter_note_html(
     format_date(&feed_item.created_date),
     format_user(&feed_item.created_by_id)
   ));
-  html.push_str(&feed_item.body);
+  html.push_str(&replace_inline_images(&feed_item.body));
+
+  // FeedItemの添付ファイルリンクを追加
+  if !feed_item_with_comments.feed_item_attachment_ids.is_empty() {
+    html.push_str(
+      "<div style=\"margin-top: 12px; padding-top: 12px; border-top: 1px solid #e5e5e5;\">",
+    );
+    for content_doc_id in &feed_item_with_comments.feed_item_attachment_ids {
+      if let Some((file_id, filename)) = content_doc_to_hubspot_file.get(content_doc_id) {
+        let file_url = format!(
+          "https://{}/file-preview/{}/file/{}/",
+          ui_domain, portal_id, file_id
+        );
+        html.push_str(&format!(
+          "<p style=\"font-size: 11px; margin: 4px 0;\"><a href=\"{}\" target=\"_blank\" style=\"color: #0091ae; text-decoration: none;\">📎 {}</a></p>",
+          file_url, filename
+        ));
+      }
+    }
+    html.push_str("</div>");
+  }
+
   html.push_str("</div>");
 
   // コメント
@@ -1066,13 +1226,46 @@ fn generate_chatter_note_html(
         format_user(&comment.created_by_id)
       ));
       html.push_str("<div style=\"font-size: 12px; line-height: 1.5;\">");
-      html.push_str(&comment.comment_body);
+      html.push_str(&replace_inline_images(&comment.comment_body));
       html.push_str("</div>");
+
+      // コメントの添付ファイルリンクを追加
+      if let Some(comment_files) = feed_item_with_comments.comment_attachments.get(&comment.id) {
+        log::debug!(
+          "コメント {} に添付ファイル: {:?}",
+          comment.id,
+          comment_files
+        );
+        for content_doc_id in comment_files {
+          if let Some((file_id, filename)) = content_doc_to_hubspot_file.get(content_doc_id) {
+            let file_url = format!(
+              "https://{}/file-preview/{}/file/{}/",
+              ui_domain, portal_id, file_id
+            );
+            log::debug!(
+              "コメント添付ファイルリンク追加: {} - {}",
+              filename,
+              file_url
+            );
+            html.push_str(&format!(
+              "<p style=\"font-size: 11px; margin: 6px 0 0 0;\"><a href=\"{}\" target=\"_blank\" style=\"color: #0091ae; text-decoration: none;\">📎 {}</a></p>",
+              file_url, filename
+            ));
+          } else {
+            log::warn!(
+              "コメント添付ファイルがHubSpotマッピングにない: {}",
+              content_doc_id
+            );
+          }
+        }
+      } else {
+        log::debug!("コメント {} に添付ファイルなし", comment.id);
+      }
+
       html.push_str("</div>");
     }
   }
 
-  // フッター
   html.push_str("<hr style=\"margin: 16px 0; border: none; border-top: 1px solid #e5e5e5;\">");
   html.push_str(&format!(
     "<p style=\"font-size: 10px; color: #999; margin: 0;\">Salesforce FeedItem ID: {}</p>",

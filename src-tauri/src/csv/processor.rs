@@ -91,6 +91,8 @@ pub struct ChatterCommentRecord {
   pub created_by_id: String,
   #[serde(rename = "CreatedDate")]
   pub created_date: String,
+  #[serde(rename = "RelatedRecordId", default)]
+  pub related_record_id: String,
 }
 
 /// UserのCSVレコード
@@ -123,7 +125,8 @@ pub struct FeedAttachmentRecord {
 pub struct FeedItemWithComments {
   pub feed_item: ChatterFeedItemRecord,
   pub comments: Vec<ChatterCommentRecord>,
-  pub attachment_content_document_ids: Vec<String>,
+  pub feed_item_attachment_ids: Vec<String>,
+  pub comment_attachments: HashMap<String, Vec<String>>,
 }
 
 /// 処理可能なChatterレコード
@@ -179,9 +182,7 @@ impl CsvProcessor {
   }
 
   /// ContentVersion.csvからContentVersionId→ContentDocumentIdのマッピングを作成
-  pub fn build_content_version_to_document_map(
-    csv_path: &str,
-  ) -> Result<HashMap<String, String>> {
+  pub fn build_content_version_to_document_map(csv_path: &str) -> Result<HashMap<String, String>> {
     let mut version_to_document = HashMap::new();
 
     let mut reader = ReaderBuilder::new().has_headers(true).from_path(csv_path)?;
@@ -702,6 +703,7 @@ impl CsvProcessor {
     found_hubspot_records: &HashMap<String, String>,
     content_document_links: HashMap<String, Vec<String>>,
     feed_attachments: HashMap<String, Vec<String>>,
+    content_version_to_document: &HashMap<String, String>,
   ) -> Vec<ProcessableChatterRecord> {
     let mut processable_records = Vec::new();
 
@@ -720,22 +722,70 @@ impl CsvProcessor {
           // コメントを日付でソート（古い順）
           comments.sort_by(|a, b| a.created_date.cmp(&b.created_date));
 
-          // 添付ファイルを統合
-          let mut attachment_ids = Vec::new();
+          // FeedItemの添付ファイル
+          let mut feed_item_attachment_ids = Vec::new();
 
           // ContentDocumentLinkから取得
           if let Some(cdl_ids) = content_document_links.get(&feed_item.id) {
-            attachment_ids.extend(cdl_ids.clone());
+            feed_item_attachment_ids.extend(cdl_ids.clone());
           }
 
           // FeedAttachmentから取得
           if let Some(fa_ids) = feed_attachments.get(&feed_item.id) {
-            attachment_ids.extend(fa_ids.clone());
+            feed_item_attachment_ids.extend(fa_ids.clone());
           }
 
           // 重複を削除
-          attachment_ids.sort();
-          attachment_ids.dedup();
+          feed_item_attachment_ids.sort();
+          feed_item_attachment_ids.dedup();
+
+          // コメントごとの添付ファイルを収集
+          let mut comment_attachments: HashMap<String, Vec<String>> = HashMap::new();
+
+          for comment in &comments {
+            if !comment.related_record_id.is_empty() {
+              log::debug!(
+                "コメント {} のRelatedRecordId: {}",
+                comment.id,
+                comment.related_record_id
+              );
+              // 068→069変換（069の場合はそのまま使用）
+              let content_document_id = if comment.related_record_id.starts_with("068") {
+                content_version_to_document
+                  .get(&comment.related_record_id)
+                  .cloned()
+                  .unwrap_or_else(|| {
+                    log::warn!(
+                      "ContentVersion {} に対応するContentDocumentが見つかりません",
+                      comment.related_record_id
+                    );
+                    comment.related_record_id.clone()
+                  })
+              } else if comment.related_record_id.starts_with("069") {
+                comment.related_record_id.clone()
+              } else {
+                log::warn!("未対応のRelatedRecordId: {}", comment.related_record_id);
+                continue;
+              };
+
+              log::debug!(
+                "コメント {} のContentDocumentId: {}",
+                comment.id,
+                content_document_id
+              );
+
+              comment_attachments
+                .entry(comment.id.clone())
+                .or_default()
+                .push(content_document_id);
+            }
+          }
+
+          log::info!(
+            "FeedItem {} のコメント添付: {:?}",
+            feed_item.id,
+            comment_attachments
+          );
 
           records_by_parent
             .entry(feed_item.parent_id.clone())
@@ -743,7 +793,8 @@ impl CsvProcessor {
             .push(FeedItemWithComments {
               feed_item: feed_item.clone(),
               comments,
-              attachment_content_document_ids: attachment_ids,
+              feed_item_attachment_ids,
+              comment_attachments,
             });
         }
       }
