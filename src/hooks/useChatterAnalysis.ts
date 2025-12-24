@@ -22,6 +22,7 @@ export const useChatterAnalysis = () => {
   const analyzeFiles = async (
     feedItemPath: string,
     feedCommentPath: string,
+    contentDocumentLinkPath: string,
   ) => {
     if (!feedItemPath.trim() || !feedCommentPath.trim()) {
       toast.error("両方のファイルを選択してください");
@@ -35,6 +36,7 @@ export const useChatterAnalysis = () => {
       const result = (await invoke("analyze_chatter_files", {
         feedItemPath,
         feedCommentPath,
+        contentDocumentLinkPath,
       })) as { object_groups: Record<string, number> };
 
       const groups: ObjectGroup[] = Object.entries(result.object_groups)

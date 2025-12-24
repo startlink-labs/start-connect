@@ -93,11 +93,37 @@ pub struct ChatterCommentRecord {
   pub created_date: String,
 }
 
+/// UserのCSVレコード
+#[derive(Debug, Deserialize, Clone)]
+pub struct UserRecord {
+  #[serde(rename = "Id")]
+  pub id: String,
+  #[serde(rename = "Name")]
+  pub name: String,
+  #[serde(rename = "Username")]
+  pub username: String,
+}
+
+/// FeedAttachmentのCSVレコード
+#[derive(Debug, Deserialize, Clone)]
+pub struct FeedAttachmentRecord {
+  #[serde(rename = "Id")]
+  #[allow(dead_code)]
+  pub id: String,
+  #[serde(rename = "FeedEntityId")]
+  pub feed_entity_id: String,
+  #[serde(rename = "RecordId")]
+  pub record_id: String,
+  #[serde(rename = "Type")]
+  pub attachment_type: String,
+}
+
 /// FeedItemとコメントをまとめた構造
 #[derive(Debug, Clone)]
 pub struct FeedItemWithComments {
   pub feed_item: ChatterFeedItemRecord,
   pub comments: Vec<ChatterCommentRecord>,
+  pub attachment_content_document_ids: Vec<String>,
 }
 
 /// 処理可能なChatterレコード
@@ -150,6 +176,26 @@ impl CsvProcessor {
 
     log::info!("ContentDocumentLink.csv処理完了: {}行", row_count);
     Ok(records_by_type)
+  }
+
+  /// ContentVersion.csvからContentVersionId→ContentDocumentIdのマッピングを作成
+  pub fn build_content_version_to_document_map(
+    csv_path: &str,
+  ) -> Result<HashMap<String, String>> {
+    let mut version_to_document = HashMap::new();
+
+    let mut reader = ReaderBuilder::new().has_headers(true).from_path(csv_path)?;
+
+    for result in reader.deserialize() {
+      let record: ContentVersionRecord = result?;
+      version_to_document.insert(record.id, record.content_document_id);
+    }
+
+    log::info!(
+      "ContentVersionマッピング作成: {}件",
+      version_to_document.len()
+    );
+    Ok(version_to_document)
   }
 
   /// ContentVersion.csvからファイル情報を取得し、対象レコードをフィルタリング
@@ -494,11 +540,168 @@ impl CsvProcessor {
     Ok(comments_by_feed_item)
   }
 
+  /// User.csvを読み込んでIDでマップ化
+  pub fn load_users(user_path: &str) -> Result<HashMap<String, UserRecord>> {
+    let mut users: HashMap<String, UserRecord> = HashMap::new();
+
+    if user_path.is_empty() || !Path::new(user_path).exists() {
+      log::info!("User.csvが指定されていないためスキップ");
+      return Ok(users);
+    }
+
+    let mut reader = ReaderBuilder::new()
+      .has_headers(true)
+      .from_path(user_path)?;
+
+    for result in reader.deserialize() {
+      let record: UserRecord = result?;
+      users.insert(record.id.clone(), record);
+    }
+
+    log::info!("User.csv読み込み完了: {}件", users.len());
+    Ok(users)
+  }
+
+  /// ContentDocumentLinkでFeedItem/FeedCommentに紐づくファイル数をカウント
+  pub fn count_chatter_attachments(content_document_link_path: &str) -> Result<(usize, usize)> {
+    let mut reader = ReaderBuilder::new()
+      .has_headers(true)
+      .from_path(content_document_link_path)?;
+
+    let headers = reader.headers()?.clone();
+    let linked_entity_id_index = headers
+      .iter()
+      .position(|h| h == "LinkedEntityId")
+      .ok_or_else(|| anyhow!("LinkedEntityIdカラムが見つかりません"))?;
+
+    let mut feed_item_count = 0;
+    let mut feed_comment_count = 0;
+
+    for result in reader.records() {
+      let record = result?;
+      if let Some(linked_entity_id) = record.get(linked_entity_id_index) {
+        let linked_entity_id = linked_entity_id.trim();
+        if linked_entity_id.len() >= 3 {
+          let prefix = &linked_entity_id[0..3];
+          if prefix == "0D5" {
+            feed_item_count += 1;
+          } else if prefix == "0D7" {
+            feed_comment_count += 1;
+          }
+        }
+      }
+    }
+
+    log::info!(
+      "ContentDocumentLink分析: FeedItem={}, FeedComment={}",
+      feed_item_count,
+      feed_comment_count
+    );
+    Ok((feed_item_count, feed_comment_count))
+  }
+
+  /// FeedAttachmentを読み込んでFeedEntityIdでグループ化
+  /// RecordIdが068(ContentVersion)の場合は069(ContentDocument)に変換
+  pub fn load_feed_attachments(
+    feed_attachment_path: &str,
+    target_feed_item_ids: &HashSet<String>,
+    content_version_to_document: &HashMap<String, String>,
+  ) -> Result<HashMap<String, Vec<String>>> {
+    let mut attachments_by_feed_item: HashMap<String, Vec<String>> = HashMap::new();
+
+    if feed_attachment_path.is_empty() || !Path::new(feed_attachment_path).exists() {
+      log::info!("FeedAttachment.csvが指定されていないためスキップ");
+      return Ok(attachments_by_feed_item);
+    }
+
+    let mut reader = ReaderBuilder::new()
+      .has_headers(true)
+      .from_path(feed_attachment_path)?;
+
+    for result in reader.deserialize() {
+      let record: FeedAttachmentRecord = result?;
+
+      // Type='Content'またはType='InlineImage'を処理
+      if (record.attachment_type == "Content" || record.attachment_type == "InlineImage")
+        && target_feed_item_ids.contains(&record.feed_entity_id)
+      {
+        // RecordIdが068(ContentVersion)の場合は069(ContentDocument)に変換
+        let content_document_id = if record.record_id.starts_with("068") {
+          content_version_to_document
+            .get(&record.record_id)
+            .cloned()
+            .unwrap_or_else(|| {
+              log::warn!(
+                "ContentVersion {} に対応するContentDocumentが見つかりません",
+                record.record_id
+              );
+              record.record_id.clone()
+            })
+        } else {
+          record.record_id.clone()
+        };
+
+        attachments_by_feed_item
+          .entry(record.feed_entity_id.clone())
+          .or_default()
+          .push(content_document_id);
+      }
+    }
+
+    log::info!(
+      "FeedAttachment読み込み完了: {}件のFeedItemに添付",
+      attachments_by_feed_item.len()
+    );
+    Ok(attachments_by_feed_item)
+  }
+
+  /// ContentDocumentLinkからFeedItem/FeedCommentの添付ファイルを抽出
+  pub fn load_chatter_content_document_links(
+    content_document_link_path: &str,
+    target_feed_item_ids: &HashSet<String>,
+  ) -> Result<HashMap<String, Vec<String>>> {
+    let mut links_by_entity: HashMap<String, Vec<String>> = HashMap::new();
+
+    if content_document_link_path.is_empty() || !Path::new(content_document_link_path).exists() {
+      log::info!("ContentDocumentLink.csvが指定されていないためスキップ");
+      return Ok(links_by_entity);
+    }
+
+    let mut reader = ReaderBuilder::new()
+      .has_headers(true)
+      .from_path(content_document_link_path)?;
+
+    for result in reader.deserialize() {
+      let record: ContentDocumentLinkRecord = result?;
+
+      // FeedItem(0D5)またはFeedComment(0D7)のみ処理
+      if record.linked_entity_id.len() >= 3 {
+        let prefix = &record.linked_entity_id[0..3];
+        if (prefix == "0D5" && target_feed_item_ids.contains(&record.linked_entity_id))
+          || prefix == "0D7"
+        {
+          links_by_entity
+            .entry(record.linked_entity_id.clone())
+            .or_default()
+            .push(record.content_document_id);
+        }
+      }
+    }
+
+    log::info!(
+      "ContentDocumentLink読み込み完了: {}件のエンティティに添付",
+      links_by_entity.len()
+    );
+    Ok(links_by_entity)
+  }
+
   /// FeedItemとCommentを結合してProcessableChatterRecordを生成
   pub fn group_chatter_records(
     feed_items_by_prefix: HashMap<String, Vec<ChatterFeedItemRecord>>,
     comments_by_feed_item: HashMap<String, Vec<ChatterCommentRecord>>,
     found_hubspot_records: &HashMap<String, String>,
+    content_document_links: HashMap<String, Vec<String>>,
+    feed_attachments: HashMap<String, Vec<String>>,
   ) -> Vec<ProcessableChatterRecord> {
     let mut processable_records = Vec::new();
 
@@ -517,12 +720,30 @@ impl CsvProcessor {
           // コメントを日付でソート（古い順）
           comments.sort_by(|a, b| a.created_date.cmp(&b.created_date));
 
+          // 添付ファイルを統合
+          let mut attachment_ids = Vec::new();
+
+          // ContentDocumentLinkから取得
+          if let Some(cdl_ids) = content_document_links.get(&feed_item.id) {
+            attachment_ids.extend(cdl_ids.clone());
+          }
+
+          // FeedAttachmentから取得
+          if let Some(fa_ids) = feed_attachments.get(&feed_item.id) {
+            attachment_ids.extend(fa_ids.clone());
+          }
+
+          // 重複を削除
+          attachment_ids.sort();
+          attachment_ids.dedup();
+
           records_by_parent
             .entry(feed_item.parent_id.clone())
             .or_default()
             .push(FeedItemWithComments {
               feed_item: feed_item.clone(),
               comments,
+              attachment_content_document_ids: attachment_ids,
             });
         }
       }

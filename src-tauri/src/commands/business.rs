@@ -6,7 +6,7 @@ use crate::csv::{CsvProcessor, ObjectMapping};
 use crate::hubspot::{build_record_url, HubSpotService};
 use anyhow::Result;
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use tauri::{command, Emitter};
 
@@ -422,9 +422,9 @@ async fn process_single_record(
       let filename = file_data.path_on_client.clone();
       let safe_filename = if let Some(dot_pos) = filename.rfind('.') {
         let (name, ext) = filename.split_at(dot_pos);
-        format!("{}_{}{}", file_data.version_id, name, ext.to_lowercase())
+        format!("{}_{}{}", name, file_data.version_id, ext.to_lowercase())
       } else {
-        format!("{}_{}", file_data.version_id, filename)
+        format!("{}_{}", filename, file_data.version_id)
       };
 
       // HubSpotでファイル存在確認
@@ -563,6 +563,7 @@ pub async fn cleanup_temp_csv(temp_path: String) -> Result<(), String> {
 pub async fn analyze_chatter_files(
   feed_item_path: String,
   feed_comment_path: String,
+  content_document_link_path: String,
 ) -> Result<AnalyzeResponse, String> {
   log::info!("Chatterファイル分析開始");
 
@@ -575,13 +576,35 @@ pub async fn analyze_chatter_files(
   }
 
   // FeedItemのParentIdでオブジェクトをグルーピング
-  match CsvProcessor::analyze_chatter_object_groups(&feed_item_path) {
-    Ok(object_groups) => {
-      log::info!("Chatter分析完了: {}種類のオブジェクト", object_groups.len());
-      Ok(AnalyzeResponse { object_groups })
+  let mut object_groups =
+    CsvProcessor::analyze_chatter_object_groups(&feed_item_path).map_err(|e| e.to_string())?;
+
+  // ContentDocumentLinkが指定されていれば、FeedItem/FeedCommentに紐づくファイル数を追加
+  if !content_document_link_path.is_empty()
+    && std::path::Path::new(&content_document_link_path).exists()
+  {
+    match CsvProcessor::count_chatter_attachments(&content_document_link_path) {
+      Ok((feed_item_count, feed_comment_count)) => {
+        if feed_item_count > 0 {
+          object_groups.insert("FeedItem添付".to_string(), feed_item_count);
+        }
+        if feed_comment_count > 0 {
+          object_groups.insert("FeedComment添付".to_string(), feed_comment_count);
+        }
+        log::info!(
+          "Chatter添付ファイル: FeedItem={}件, FeedComment={}件",
+          feed_item_count,
+          feed_comment_count
+        );
+      }
+      Err(e) => {
+        log::warn!("ContentDocumentLink分析エラー: {}", e);
+      }
     }
-    Err(e) => Err(format!("{}", e)),
   }
+
+  log::info!("Chatter分析完了: {}種類のオブジェクト", object_groups.len());
+  Ok(AnalyzeResponse { object_groups })
 }
 
 /// Chatter移行処理のメインコマンド
@@ -589,6 +612,10 @@ pub async fn analyze_chatter_files(
 pub async fn process_chatter_migration(
   feed_item_path: String,
   feed_comment_path: String,
+  user_path: String,
+  content_version_path: String,
+  content_document_link_path: String,
+  feed_attachment_path: String,
   object_mappings: HashMap<String, ObjectMapping>,
   window: tauri::Window,
 ) -> Result<FileMappingResponse, String> {
@@ -638,12 +665,85 @@ pub async fn process_chatter_migration(
     .flat_map(|items| items.iter().map(|item| item.id.clone()))
     .collect();
 
-  emit_progress("load_comments", 30, "コメントを読み込み中...");
+  emit_progress("load_comments", 30, "コメントと添付ファイルを読み込み中...");
 
   // FeedCommentを読み込み
   let comments_by_feed_item =
     CsvProcessor::load_feed_comments(&feed_comment_path, &target_feed_item_ids)
       .map_err(|e| format!("FeedComment読み込みエラー: {}", e))?;
+
+  // User.csvを読み込み
+  let users =
+    CsvProcessor::load_users(&user_path).map_err(|e| format!("User.csv読み込みエラー: {}", e))?;
+
+  // ContentDocumentLinkから添付ファイルを読み込み
+  let content_document_links = CsvProcessor::load_chatter_content_document_links(
+    &content_document_link_path,
+    &target_feed_item_ids,
+  )
+  .map_err(|e| format!("ContentDocumentLink読み込みエラー: {}", e))?;
+
+  // ContentVersionからContentVersionId→ContentDocumentIdのマッピングを作成
+  let content_version_to_document = if !content_version_path.is_empty() {
+    CsvProcessor::build_content_version_to_document_map(&content_version_path)
+      .map_err(|e| format!("ContentVersionマッピング作成エラー: {}", e))?
+  } else {
+    HashMap::new()
+  };
+
+  // FeedAttachmentから添付ファイルを読み込み（068→069変換対応）
+  let feed_attachments = CsvProcessor::load_feed_attachments(
+    &feed_attachment_path,
+    &target_feed_item_ids,
+    &content_version_to_document,
+  )
+  .map_err(|e| format!("FeedAttachment読み込みエラー: {}", e))?;
+
+  // ContentVersionからファイル情報を取得
+  let file_info = if !content_version_path.is_empty() {
+    let mut all_content_document_ids = HashSet::new();
+    for ids in content_document_links.values() {
+      all_content_document_ids.extend(ids.clone());
+    }
+    for ids in feed_attachments.values() {
+      all_content_document_ids.extend(ids.clone());
+    }
+
+    if !all_content_document_ids.is_empty() {
+      let mut reader = csv::ReaderBuilder::new()
+        .has_headers(true)
+        .from_path(&content_version_path)
+        .map_err(|e| format!("ContentVersion読み込みエラー: {}", e))?;
+
+      let mut file_map = HashMap::new();
+      for result in reader.deserialize() {
+        let record: crate::csv::processor::ContentVersionRecord =
+          result.map_err(|e| format!("ContentVersionパースエラー: {}", e))?;
+
+        if all_content_document_ids.contains(&record.content_document_id) {
+          let filename = record
+            .path_on_client
+            .split('/')
+            .next_back()
+            .unwrap_or(&record.path_on_client);
+          file_map.insert(
+            record.content_document_id.clone(),
+            crate::csv::processor::FileInfo {
+              version_id: record.id,
+              path_on_client: filename.to_string(),
+              version_data: record.version_data,
+            },
+          );
+        }
+      }
+      log::info!("ContentVersion読み込み完了: {}件", file_map.len());
+      file_map
+    } else {
+      HashMap::new()
+    }
+  } else {
+    HashMap::new()
+  };
 
   emit_progress("hubspot_search", 40, "HubSpotレコードを検索中...");
 
@@ -756,6 +856,8 @@ pub async fn process_chatter_migration(
     feed_items_by_prefix,
     comments_by_feed_item,
     &hubspot_record_cache,
+    content_document_links,
+    feed_attachments,
   );
 
   // ノート作成処理
@@ -802,14 +904,46 @@ pub async fn process_chatter_migration(
       let mut notes_created = 0;
 
       for feed_item_with_comments in &record.feed_items {
-        let note_html = generate_chatter_note_html(feed_item_with_comments);
+        // 添付ファイルをアップロード
+        let mut file_ids = Vec::new();
+        for content_doc_id in &feed_item_with_comments.attachment_content_document_ids {
+          if let Some(file_data) = file_info.get(content_doc_id) {
+            if let Some(version_data) = &file_data.version_data {
+              let filename = if let Some(dot_pos) = file_data.path_on_client.rfind('.') {
+                let (name, ext) = file_data.path_on_client.split_at(dot_pos);
+                format!("{}_{}{}", name, file_data.version_id, ext.to_lowercase())
+              } else {
+                format!("{}_{}", file_data.path_on_client, file_data.version_id)
+              };
+
+              match hubspot_service
+                .upload_file_from_base64(version_data, &filename)
+                .await
+              {
+                Ok(file_id) => {
+                  file_ids.push(file_id);
+                  log::debug!("アップロード成功: {}", filename);
+                }
+                Err(e) => {
+                  log::warn!("アップロード失敗 {}: {}", filename, e);
+                }
+              }
+            }
+          }
+        }
+
+        let note_html = generate_chatter_note_html(feed_item_with_comments, &users);
 
         match hubspot_service
           .create_note_for_record(
             &hubspot_record_id,
             &mapping.hubspot_object,
             &note_html,
-            None,
+            if file_ids.is_empty() {
+              None
+            } else {
+              Some(file_ids)
+            },
           )
           .await
         {
@@ -875,6 +1009,7 @@ pub async fn process_chatter_migration(
 /// ChatterノートのHTMLを生成
 fn generate_chatter_note_html(
   feed_item_with_comments: &crate::csv::processor::FeedItemWithComments,
+  users: &HashMap<String, crate::csv::processor::UserRecord>,
 ) -> String {
   let feed_item = &feed_item_with_comments.feed_item;
   let comments = &feed_item_with_comments.comments;
@@ -890,38 +1025,47 @@ fn generate_chatter_note_html(
       .to_string()
   };
 
+  // ユーザー情報を取得して表示名を生成
+  let format_user = |user_id: &str| -> String {
+    if let Some(user) = users.get(user_id) {
+      format!("{} ({})", user.name, user.username)
+    } else {
+      user_id.to_string()
+    }
+  };
+
   let mut html = String::new();
 
   // ヘッダー
-  html.push_str("<h3>📝 Chatter投稿</h3>");
-  html.push_str(&format!(
-    "<p><strong>投稿日時:</strong> {}</p>",
-    format_date(&feed_item.created_date)
-  ));
-  html.push_str(&format!(
-    "<p><strong>投稿者ID:</strong> {}</p>",
-    feed_item.created_by_id
-  ));
+  html.push_str("<p style=\"font-size: 10px; color: #999; margin: 0 0 12px 0;\">Chatter投稿</p>");
 
   // 投稿本文
   html.push_str(
-    "<div style=\"border-left: 3px solid #0091ae; padding-left: 12px; margin: 12px 0;\">",
+    "<div style=\"background: #f9f9f9; padding: 12px; border-radius: 4px; border-left: 3px solid #ff7a59; margin: 0 0 12px 0; font-size: 13px; line-height: 1.6;\">",
   );
+  html.push_str(&format!(
+    "<p style=\"font-size: 11px; color: #666; margin: 0 0 8px 0;\">{} - {}</p>",
+    format_date(&feed_item.created_date),
+    format_user(&feed_item.created_by_id)
+  ));
   html.push_str(&feed_item.body);
   html.push_str("</div>");
 
   // コメント
   if !comments.is_empty() {
-    html.push_str(&format!("<h4>💬 コメント ({}件)</h4>", comments.len()));
+    html.push_str(&format!(
+      "<p style=\"font-size: 12px; font-weight: 600; margin: 16px 0 8px 0;\">コメント ({}件)</p>",
+      comments.len()
+    ));
 
     for comment in comments {
-      html.push_str("<div style=\"margin-left: 20px; border-left: 2px solid #ccc; padding-left: 12px; margin-top: 8px;\">");
+      html.push_str("<div style=\"background: #fafafa; padding: 10px; border-radius: 4px; border-left: 3px solid #ccc; margin-top: 8px;\">");
       html.push_str(&format!(
-        "<p><strong>{}</strong> - 投稿者ID: {}</p>",
+        "<p style=\"font-size: 11px; color: #666; margin: 0 0 6px 0;\">{} - {}</p>",
         format_date(&comment.created_date),
-        comment.created_by_id
+        format_user(&comment.created_by_id)
       ));
-      html.push_str("<div>");
+      html.push_str("<div style=\"font-size: 12px; line-height: 1.5;\">");
       html.push_str(&comment.comment_body);
       html.push_str("</div>");
       html.push_str("</div>");
@@ -929,9 +1073,9 @@ fn generate_chatter_note_html(
   }
 
   // フッター
-  html.push_str("<hr style=\"margin: 16px 0; border: none; border-top: 1px solid #e0e0e0;\">");
+  html.push_str("<hr style=\"margin: 16px 0; border: none; border-top: 1px solid #e5e5e5;\">");
   html.push_str(&format!(
-    "<p style=\"font-size: 11px; color: #666;\">Salesforce FeedItem ID: {}</p>",
+    "<p style=\"font-size: 10px; color: #999; margin: 0;\">Salesforce FeedItem ID: {}</p>",
     feed_item.id
   ));
 

@@ -6,9 +6,17 @@ import { FixedActionBar } from "../FixedActionBar";
 interface FileSelectionStepProps {
   feedItemPath: string;
   feedCommentPath: string;
+  userPath: string;
+  contentVersionPath: string;
+  contentDocumentLinkPath: string;
+  feedAttachmentPath: string;
   isProcessing: boolean;
   onFeedItemPathChange: (path: string) => void;
   onFeedCommentPathChange: (path: string) => void;
+  onUserPathChange: (path: string) => void;
+  onContentVersionPathChange: (path: string) => void;
+  onContentDocumentLinkPathChange: (path: string) => void;
+  onFeedAttachmentPathChange: (path: string) => void;
   onAnalyze: () => void;
   onBack: () => void;
 }
@@ -16,9 +24,17 @@ interface FileSelectionStepProps {
 export const FileSelectionStep = ({
   feedItemPath,
   feedCommentPath,
+  userPath,
+  contentVersionPath,
+  contentDocumentLinkPath,
+  feedAttachmentPath,
   isProcessing,
   onFeedItemPathChange,
   onFeedCommentPathChange,
+  onUserPathChange,
+  onContentVersionPathChange,
+  onContentDocumentLinkPathChange,
+  onFeedAttachmentPathChange,
   onAnalyze,
   onBack,
 }: FileSelectionStepProps) => {
@@ -48,6 +64,36 @@ export const FileSelectionStep = ({
               placeholder="Chatterコメントのcsv"
             />
           </div>
+          <FileDropzone
+            label="User.csv（オプション）"
+            value={userPath}
+            onFileSelect={onUserPathChange}
+            disabled={isProcessing}
+            placeholder="ユーザー情報のCSVファイル（指定しない場合、投稿者はIDで表示されます）"
+          />
+          <div className="grid md:grid-cols-2 gap-6">
+            <FileDropzone
+              label="ContentVersion.csv（オプション）"
+              value={contentVersionPath}
+              onFileSelect={onContentVersionPathChange}
+              disabled={isProcessing}
+              placeholder="添付ファイル情報のCSVファイル"
+            />
+            <FileDropzone
+              label="ContentDocumentLink.csv（オプション）"
+              value={contentDocumentLinkPath}
+              onFileSelect={onContentDocumentLinkPathChange}
+              disabled={isProcessing}
+              placeholder="ファイルリンク情報のCSVファイル"
+            />
+          </div>
+          <FileDropzone
+            label="FeedAttachment.csv（オプション）"
+            value={feedAttachmentPath}
+            onFileSelect={onFeedAttachmentPathChange}
+            disabled={isProcessing}
+            placeholder="古い形式の添付ファイル情報（FeedItemのみ）"
+          />
         </CardContent>
       </Card>
 

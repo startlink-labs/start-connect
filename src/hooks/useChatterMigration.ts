@@ -11,6 +11,10 @@ export const useChatterMigration = () => {
   const processChatterMigration = async (
     feedItemPath: string,
     feedCommentPath: string,
+    userPath: string,
+    contentVersionPath: string,
+    contentDocumentLinkPath: string,
+    feedAttachmentPath: string,
     mappings: Record<
       string,
       { hubspot_object: string; salesforce_property: string }
@@ -23,6 +27,10 @@ export const useChatterMigration = () => {
       const result = (await invoke("process_chatter_migration", {
         feedItemPath,
         feedCommentPath,
+        userPath,
+        contentVersionPath,
+        contentDocumentLinkPath,
+        feedAttachmentPath,
         objectMappings: mappings,
       })) as {
         result_csv_path: string;

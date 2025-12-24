@@ -29,3 +29,6 @@ dist-ssr
 
 # HubSpot config file
 hubspot.config.yml
+
+# sample dir
+sample/

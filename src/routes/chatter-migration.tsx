@@ -32,6 +32,10 @@ function ChatterMigration() {
   const [downloadCompleted, setDownloadCompleted] = useState(false);
   const [feedItemPath, setFeedItemPath] = useState("");
   const [feedCommentPath, setFeedCommentPath] = useState("");
+  const [userPath, setUserPath] = useState("");
+  const [contentVersionPath, setContentVersionPath] = useState("");
+  const [contentDocumentLinkPath, setContentDocumentLinkPath] = useState("");
+  const [feedAttachmentPath, setFeedAttachmentPath] = useState("");
   const [objectMapping, setObjectMapping] = useState<Record<string, string>>(
     {},
   );
@@ -57,7 +61,11 @@ function ChatterMigration() {
   ];
 
   const handleAnalyze = async () => {
-    const result = await analyzeFiles(feedItemPath, feedCommentPath);
+    const result = await analyzeFiles(
+      feedItemPath,
+      feedCommentPath,
+      contentDocumentLinkPath,
+    );
     if (result) {
       setObjectMapping(result.initialMapping);
       setSalesforceProperties(result.initialProperties);
@@ -83,7 +91,15 @@ function ChatterMigration() {
         >,
       );
 
-    await processChatterMigration(feedItemPath, feedCommentPath, mappings);
+    await processChatterMigration(
+      feedItemPath,
+      feedCommentPath,
+      userPath,
+      contentVersionPath,
+      contentDocumentLinkPath,
+      feedAttachmentPath,
+      mappings,
+    );
     setStep("download");
     setCenterMessage(null);
   };
@@ -96,6 +112,10 @@ function ChatterMigration() {
     setDownloadCompleted(false);
     setFeedItemPath("");
     setFeedCommentPath("");
+    setUserPath("");
+    setContentVersionPath("");
+    setContentDocumentLinkPath("");
+    setFeedAttachmentPath("");
     setObjectMapping({});
     setSalesforceProperties({});
     reset();
@@ -114,9 +134,17 @@ function ChatterMigration() {
           <FileSelectionStep
             feedItemPath={feedItemPath}
             feedCommentPath={feedCommentPath}
+            userPath={userPath}
+            contentVersionPath={contentVersionPath}
+            contentDocumentLinkPath={contentDocumentLinkPath}
+            feedAttachmentPath={feedAttachmentPath}
             isProcessing={isProcessing}
             onFeedItemPathChange={setFeedItemPath}
             onFeedCommentPathChange={setFeedCommentPath}
+            onUserPathChange={setUserPath}
+            onContentVersionPathChange={setContentVersionPath}
+            onContentDocumentLinkPathChange={setContentDocumentLinkPath}
+            onFeedAttachmentPathChange={setFeedAttachmentPath}
             onAnalyze={handleAnalyze}
             onBack={() => window.history.back()}
           />
