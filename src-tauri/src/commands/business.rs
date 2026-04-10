@@ -754,19 +754,22 @@ pub async fn process_chatter_migration(
             }
           }
 
-          let filename = record
-            .path_on_client
-            .split('/')
-            .next_back()
-            .unwrap_or(&record.path_on_client);
-          file_map.insert(
-            record.content_document_id.clone(),
-            crate::csv::processor::FileInfo {
-              version_id: record.id,
-              path_on_client: filename.to_string(),
-              version_data,
-            },
-          );
+          // version_dataがある場合のみ挿入/上書き（古いバージョンのNoneで最新版を上書きしない）
+          if version_data.is_some() || !file_map.contains_key(&record.content_document_id) {
+            let filename = record
+              .path_on_client
+              .split('/')
+              .next_back()
+              .unwrap_or(&record.path_on_client);
+            file_map.insert(
+              record.content_document_id.clone(),
+              crate::csv::processor::FileInfo {
+                version_id: record.id,
+                path_on_client: filename.to_string(),
+                version_data,
+              },
+            );
+          }
         }
       }
       log::info!("ContentVersion読み込み完了: {}件", file_map.len());

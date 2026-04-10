@@ -278,14 +278,17 @@ impl CsvProcessor {
           record.path_on_client
         };
 
-        file_info.insert(
-          record.content_document_id.clone(),
-          FileInfo {
-            version_id: record.id,
-            path_on_client,
-            version_data,
-          },
-        );
+        // version_dataがある場合のみ挿入/上書き（古いバージョンのNoneで最新版を上書きしない）
+        if version_data.is_some() || !file_info.contains_key(&record.content_document_id) {
+          file_info.insert(
+            record.content_document_id.clone(),
+            FileInfo {
+              version_id: record.id,
+              path_on_client,
+              version_data,
+            },
+          );
+        }
         found_content_ids.insert(record.content_document_id);
       }
     }
