@@ -15,6 +15,7 @@ export const useChatterMigration = () => {
     contentVersionPath: string,
     contentDocumentLinkPath: string,
     feedAttachmentPath: string,
+    contentVersionFolderPath: string,
     mappings: Record<
       string,
       { hubspot_object: string; salesforce_property: string }
@@ -31,6 +32,7 @@ export const useChatterMigration = () => {
         contentVersionPath,
         contentDocumentLinkPath,
         feedAttachmentPath,
+        contentVersionFolderPath,
         objectMappings: mappings,
       })) as {
         result_csv_path: string;

@@ -617,10 +617,17 @@ pub async fn process_chatter_migration(
   content_version_path: String,
   content_document_link_path: String,
   feed_attachment_path: String,
+  content_version_folder_path: String,
   object_mappings: HashMap<String, ObjectMapping>,
   window: tauri::Window,
 ) -> Result<FileMappingResponse, String> {
   log::info!("Chatter移行処理開始");
+
+  let content_folder = if content_version_folder_path.is_empty() {
+    None
+  } else {
+    Some(content_version_folder_path.as_str())
+  };
 
   let emit_progress = |step: &str, progress: u8, message: &str| {
     let progress_info = ProgressInfo {
@@ -722,6 +729,31 @@ pub async fn process_chatter_migration(
           result.map_err(|e| format!("ContentVersionパースエラー: {}", e))?;
 
         if all_content_document_ids.contains(&record.content_document_id) {
+          let mut version_data = record.version_data;
+
+          // VersionDataが空で、ContentVersionフォルダが指定されている場合
+          if version_data.is_none() {
+            if let Some(folder) = content_folder {
+              let file_path = std::path::Path::new(folder).join(&record.id);
+              if file_path.exists() {
+                match std::fs::read(&file_path) {
+                  Ok(file_bytes) => {
+                    version_data = Some(base64::Engine::encode(
+                      &base64::engine::general_purpose::STANDARD,
+                      file_bytes,
+                    ));
+                    log::debug!("フォルダから読み込み: {}", file_path.display());
+                  }
+                  Err(e) => {
+                    log::warn!("ファイル読み込み失敗 {}: {}", file_path.display(), e);
+                  }
+                }
+              } else {
+                log::debug!("ファイルが見つかりません: {}", file_path.display());
+              }
+            }
+          }
+
           let filename = record
             .path_on_client
             .split('/')
@@ -732,7 +764,7 @@ pub async fn process_chatter_migration(
             crate::csv::processor::FileInfo {
               version_id: record.id,
               path_on_client: filename.to_string(),
-              version_data: record.version_data,
+              version_data,
             },
           );
         }

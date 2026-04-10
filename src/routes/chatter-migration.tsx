@@ -36,6 +36,7 @@ function ChatterMigration() {
   const [contentVersionPath, setContentVersionPath] = useState("");
   const [contentDocumentLinkPath, setContentDocumentLinkPath] = useState("");
   const [feedAttachmentPath, setFeedAttachmentPath] = useState("");
+  const [contentVersionFolderPath, setContentVersionFolderPath] = useState("");
   const [objectMapping, setObjectMapping] = useState<Record<string, string>>(
     {},
   );
@@ -98,6 +99,7 @@ function ChatterMigration() {
       contentVersionPath,
       contentDocumentLinkPath,
       feedAttachmentPath,
+      contentVersionFolderPath,
       mappings,
     );
     setStep("download");
@@ -116,6 +118,7 @@ function ChatterMigration() {
     setContentVersionPath("");
     setContentDocumentLinkPath("");
     setFeedAttachmentPath("");
+    setContentVersionFolderPath("");
     setObjectMapping({});
     setSalesforceProperties({});
     reset();
@@ -138,6 +141,7 @@ function ChatterMigration() {
             contentVersionPath={contentVersionPath}
             contentDocumentLinkPath={contentDocumentLinkPath}
             feedAttachmentPath={feedAttachmentPath}
+            contentVersionFolderPath={contentVersionFolderPath}
             isProcessing={isProcessing}
             onFeedItemPathChange={setFeedItemPath}
             onFeedCommentPathChange={setFeedCommentPath}
@@ -145,6 +149,7 @@ function ChatterMigration() {
             onContentVersionPathChange={setContentVersionPath}
             onContentDocumentLinkPathChange={setContentDocumentLinkPath}
             onFeedAttachmentPathChange={setFeedAttachmentPath}
+            onContentVersionFolderPathChange={setContentVersionFolderPath}
             onAnalyze={handleAnalyze}
             onBack={() => window.history.back()}
           />

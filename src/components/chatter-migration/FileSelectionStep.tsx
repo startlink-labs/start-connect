@@ -10,6 +10,7 @@ interface FileSelectionStepProps {
   contentVersionPath: string;
   contentDocumentLinkPath: string;
   feedAttachmentPath: string;
+  contentVersionFolderPath: string;
   isProcessing: boolean;
   onFeedItemPathChange: (path: string) => void;
   onFeedCommentPathChange: (path: string) => void;
@@ -17,6 +18,7 @@ interface FileSelectionStepProps {
   onContentVersionPathChange: (path: string) => void;
   onContentDocumentLinkPathChange: (path: string) => void;
   onFeedAttachmentPathChange: (path: string) => void;
+  onContentVersionFolderPathChange: (path: string) => void;
   onAnalyze: () => void;
   onBack: () => void;
 }
@@ -28,6 +30,7 @@ export const FileSelectionStep = ({
   contentVersionPath,
   contentDocumentLinkPath,
   feedAttachmentPath,
+  contentVersionFolderPath,
   isProcessing,
   onFeedItemPathChange,
   onFeedCommentPathChange,
@@ -35,6 +38,7 @@ export const FileSelectionStep = ({
   onContentVersionPathChange,
   onContentDocumentLinkPathChange,
   onFeedAttachmentPathChange,
+  onContentVersionFolderPathChange,
   onAnalyze,
   onBack,
 }: FileSelectionStepProps) => {
@@ -93,6 +97,14 @@ export const FileSelectionStep = ({
             onFileSelect={onFeedAttachmentPathChange}
             disabled={isProcessing}
             placeholder="古い形式の添付ファイル情報（FeedItemのみ）"
+          />
+          <FileDropzone
+            label="ContentVersionフォルダ（オプション）"
+            value={contentVersionFolderPath}
+            onFileSelect={onContentVersionFolderPathChange}
+            disabled={isProcessing}
+            placeholder="VersionDataが空の場合にファイルを読み込むフォルダ"
+            isDirectory
           />
         </CardContent>
       </Card>
