@@ -1003,25 +1003,34 @@ pub async fn process_chatter_migration(
         log::warn!("トークンリフレッシュ失敗: {}", e);
       }
 
-      // 冪等性チェック: このレコードに既に作成済みのノート（FeedItem ID）を取得
-      let existing_feed_item_ids = if !hubspot_record_id.is_empty() {
+      // 冪等性チェック: このレコードに既に作成済みのノート情報を取得
+      let existing_notes = if !hubspot_record_id.is_empty() {
         hubspot_service
-          .find_existing_feed_item_ids(&hubspot_record_id, &mapping.hubspot_object)
+          .find_existing_notes(&hubspot_record_id, &mapping.hubspot_object)
           .await
           .unwrap_or_default()
       } else {
-        std::collections::HashSet::new()
+        HashMap::new()
       };
 
       for feed_item_with_comments in &record.feed_items {
-        // 冪等性: 既に作成済みならスキップ
-        if existing_feed_item_ids.contains(&feed_item_with_comments.feed_item.id) {
+        let feed_item_id = &feed_item_with_comments.feed_item.id;
+
+        // 冪等性: 既に作成済みでファイル添付済みなら完全スキップ
+        if let Some(existing_note) = existing_notes.get(feed_item_id) {
+          if existing_note.has_attachments {
+            log::info!(
+              "ノートは既に存在し添付済みのためスキップ: FeedItem {}",
+              feed_item_id
+            );
+            notes_created += 1;
+            continue;
+          }
+          // ファイル添付なし → 以下でファイルアップロード後にPATCHする
           log::info!(
-            "ノートは既に存在するためスキップ: FeedItem {}",
-            feed_item_with_comments.feed_item.id
+            "ノートは存在するがファイル未添付のため添付を追加: FeedItem {}",
+            feed_item_id
           );
-          notes_created += 1; // 既存分もカウント（success扱い）
-          continue;
         }
 
         // 添付ファイルをアップロードし、ContentDocumentId→HubSpot FileIdのマッピングを作成
@@ -1112,6 +1121,33 @@ pub async fn process_chatter_migration(
           all_file_ids.len()
         );
 
+        // 既存ノートがファイル未添付の場合 → PATCHでファイル添付を追加
+        if let Some(existing_note) = existing_notes.get(feed_item_id) {
+          if !existing_note.has_attachments && !all_file_ids.is_empty() {
+            match hubspot_service
+              .update_note_attachments(&existing_note.note_id, &all_file_ids)
+              .await
+            {
+              Ok(_) => {
+                notes_created += 1;
+              }
+              Err(e) => {
+                log::error!(
+                  "ノート添付更新失敗 {} (FeedItem: {}): {}",
+                  record.salesforce_id,
+                  feed_item_id,
+                  e
+                );
+              }
+            }
+          } else {
+            // ファイルなしの既存ノート＋今回もファイルなし → そのままスキップ
+            notes_created += 1;
+          }
+          continue;
+        }
+
+        // 新規ノート作成
         let note_html = generate_chatter_note_html(
           feed_item_with_comments,
           &users,
@@ -1140,7 +1176,7 @@ pub async fn process_chatter_migration(
             log::error!(
               "ノート作成失敗 {} (FeedItem: {}): {}",
               record.salesforce_id,
-              feed_item_with_comments.feed_item.id,
+              feed_item_id,
               e
             );
           }

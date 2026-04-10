@@ -76,6 +76,15 @@ pub struct SchemaResponse {
   pub results: Vec<HubSpotObjectInfo>,
 }
 
+/// 既存ノートの情報
+#[derive(Debug)]
+pub struct ExistingNoteInfo {
+  /// HubSpotのノートID
+  pub note_id: String,
+  /// ファイルが添付されているか
+  pub has_attachments: bool,
+}
+
 /// ノート作成用のリクエストデータ
 #[derive(Debug, Serialize)]
 struct CreateNoteRequest {
@@ -386,14 +395,14 @@ impl HubSpotService {
     }
   }
 
-  /// 指定されたFeedItem IDのノートが既に存在するか確認
-  /// レコードに紐づくノートを検索し、本文にFeedItem IDが含まれるものがあるかチェック
-  pub async fn find_existing_feed_item_ids(
+  /// 既存ノートの情報を取得（FeedItem ID → (ノートID, ファイル添付済みか)）
+  /// レコードに紐づくノートを検索し、本文からFeedItem IDを抽出
+  pub async fn find_existing_notes(
     &self,
     hubspot_record_id: &str,
     object_type: &str,
-  ) -> Result<std::collections::HashSet<String>> {
-    let mut existing_ids = std::collections::HashSet::new();
+  ) -> Result<HashMap<String, ExistingNoteInfo>> {
+    let mut existing_notes = HashMap::new();
 
     // レコードに紐づくノートのIDを取得
     let url = format!(
@@ -410,7 +419,7 @@ impl HubSpotService {
 
     if !response.status().is_success() {
       log::debug!("ノート関連付け取得失敗: {}", response.status());
-      return Ok(existing_ids);
+      return Ok(existing_notes);
     }
 
     let data: serde_json::Value = response.json().await?;
@@ -422,14 +431,14 @@ impl HubSpotService {
       .collect();
 
     if note_ids.is_empty() {
-      return Ok(existing_ids);
+      return Ok(existing_notes);
     }
 
-    // ノートの本文をバッチ取得（100件ずつ）
+    // ノートの本文と添付IDをバッチ取得（100件ずつ）
     for chunk in note_ids.chunks(100) {
       let batch_request = serde_json::json!({
         "inputs": chunk.iter().map(|id| serde_json::json!({"id": id})).collect::<Vec<_>>(),
-        "properties": ["hs_note_body"]
+        "properties": ["hs_note_body", "hs_attachment_ids"]
       });
 
       let batch_url = "https://api.hubapi.com/crm/v3/objects/notes/batch/read";
@@ -445,12 +454,16 @@ impl HubSpotService {
         let batch_data: serde_json::Value = response.json().await?;
         if let Some(results) = batch_data["results"].as_array() {
           for note in results {
+            let note_id = note["id"].as_str().unwrap_or("").to_string();
+            let has_attachments = note["properties"]["hs_attachment_ids"]
+              .as_str()
+              .map(|s| !s.is_empty())
+              .unwrap_or(false);
+
             if let Some(body) = note["properties"]["hs_note_body"].as_str() {
-              // "Salesforce FeedItem ID: xxx" パターンを抽出
               if let Some(pos) = body.find("Salesforce FeedItem ID: ") {
                 let id_start = pos + "Salesforce FeedItem ID: ".len();
                 let id_str = &body[id_start..];
-                // IDは</p>の手前まで
                 let feed_item_id = id_str
                   .split('<')
                   .next()
@@ -458,7 +471,13 @@ impl HubSpotService {
                   .trim()
                   .to_string();
                 if !feed_item_id.is_empty() {
-                  existing_ids.insert(feed_item_id);
+                  existing_notes.insert(
+                    feed_item_id,
+                    ExistingNoteInfo {
+                      note_id,
+                      has_attachments,
+                    },
+                  );
                 }
               }
             }
@@ -469,7 +488,39 @@ impl HubSpotService {
       tokio::time::sleep(tokio::time::Duration::from_millis(self.rate_limit_delay)).await;
     }
 
-    Ok(existing_ids)
+    Ok(existing_notes)
+  }
+
+  /// 既存ノートにファイル添付を追加（PATCH）
+  pub async fn update_note_attachments(
+    &self,
+    note_id: &str,
+    file_ids: &[String],
+  ) -> Result<()> {
+    let url = format!("https://api.hubapi.com/crm/v3/objects/notes/{}", note_id);
+
+    let update_request = serde_json::json!({
+      "properties": {
+        "hs_attachment_ids": file_ids.join(";")
+      }
+    });
+
+    let response = self
+      .client
+      .patch(&url)
+      .bearer_auth(&self.get_token())
+      .json(&update_request)
+      .send()
+      .await?;
+
+    if response.status().is_success() {
+      log::info!("ノート添付更新成功: {} ({}ファイル)", note_id, file_ids.len());
+      Ok(())
+    } else {
+      let status = response.status();
+      let error_text = response.text().await.unwrap_or_default();
+      Err(anyhow!("ノート添付更新失敗: {} - {}", status, error_text))
+    }
   }
 
   /// すべてのHubSpotオブジェクトを取得（標準 + カスタム）
