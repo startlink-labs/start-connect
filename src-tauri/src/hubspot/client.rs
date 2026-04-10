@@ -4,17 +4,20 @@ use base64::Engine;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// HubSpotサービス構造体
 /// APIトークンとHTTPクライアントを管理
 pub struct HubSpotService {
-  /// HubSpot APIアクセストークン
-  token: String,
+  /// HubSpot APIアクセストークン（長時間処理中にリフレッシュ可能）
+  token: Mutex<String>,
   /// HTTP通信用クライアント
   client: Client,
   /// レート制限対応用の遅延時間（ミリ秒）
   rate_limit_delay: u64,
+  /// トークン有効期限（Unixタイムスタンプ）
+  expires_at: Mutex<Option<i64>>,
 }
 
 /// HubSpotレコード検索結果
@@ -121,13 +124,52 @@ struct AssociationType {
 }
 
 impl HubSpotService {
-  /// 新しいHubSpotServiceインスタンスを作成
+  /// 新しいHubSpotServiceインスタンスを作成（有効期限なし、短時間処理向け）
+  #[allow(dead_code)]
   pub fn new(token: String) -> Self {
     Self {
-      token,
+      token: Mutex::new(token),
       client: Client::new(),
       rate_limit_delay: 100, // 100ms
+      expires_at: Mutex::new(None),
     }
+  }
+
+  /// トークンと有効期限を指定して作成
+  pub fn new_with_expiry(token: String, expires_at: Option<i64>) -> Self {
+    Self {
+      token: Mutex::new(token),
+      client: Client::new(),
+      rate_limit_delay: 100,
+      expires_at: Mutex::new(expires_at),
+    }
+  }
+
+  /// トークンを取得（内部用）
+  fn get_token(&self) -> String {
+    self.token.lock().unwrap().clone()
+  }
+
+  /// 必要に応じてトークンをリフレッシュ（有効期限5分前にリフレッシュ）
+  pub async fn refresh_token_if_needed(&self) -> Result<()> {
+    let should_refresh = {
+      let expires_at = self.expires_at.lock().unwrap();
+      if let Some(exp) = *expires_at {
+        chrono::Utc::now().timestamp() >= exp - 300
+      } else {
+        false
+      }
+    };
+
+    if should_refresh {
+      log::info!("トークンの有効期限が近いためリフレッシュ中...");
+      let credentials = crate::auth::storage::SecureStorage::get_credentials_with_refresh().await?;
+      *self.token.lock().unwrap() = credentials.token;
+      *self.expires_at.lock().unwrap() = credentials.expires_at;
+      log::info!("トークンリフレッシュ完了");
+    }
+
+    Ok(())
   }
 
   /// バッチでHubSpotレコードを検索
@@ -163,7 +205,7 @@ impl HubSpotService {
       let response = self
         .client
         .post(&url)
-        .bearer_auth(&self.token)
+        .bearer_auth(&self.get_token())
         .json(&search_request)
         .send()
         .await?;
@@ -207,7 +249,7 @@ impl HubSpotService {
     let response = self
       .client
       .get(&url)
-      .bearer_auth(&self.token)
+      .bearer_auth(&self.get_token())
       .send()
       .await?;
 
@@ -259,7 +301,7 @@ impl HubSpotService {
     let response = self
       .client
       .post(url)
-      .bearer_auth(&self.token)
+      .bearer_auth(&self.get_token())
       .multipart(form)
       .send()
       .await?;
@@ -322,7 +364,7 @@ impl HubSpotService {
     let response = self
       .client
       .post(url)
-      .bearer_auth(&self.token)
+      .bearer_auth(&self.get_token())
       .json(&note_request)
       .send()
       .await?;
@@ -342,6 +384,92 @@ impl HubSpotService {
         error_text
       ))
     }
+  }
+
+  /// 指定されたFeedItem IDのノートが既に存在するか確認
+  /// レコードに紐づくノートを検索し、本文にFeedItem IDが含まれるものがあるかチェック
+  pub async fn find_existing_feed_item_ids(
+    &self,
+    hubspot_record_id: &str,
+    object_type: &str,
+  ) -> Result<std::collections::HashSet<String>> {
+    let mut existing_ids = std::collections::HashSet::new();
+
+    // レコードに紐づくノートのIDを取得
+    let url = format!(
+      "https://api.hubapi.com/crm/v4/objects/{}/{}/associations/notes",
+      object_type, hubspot_record_id
+    );
+
+    let response = self
+      .client
+      .get(&url)
+      .bearer_auth(&self.get_token())
+      .send()
+      .await?;
+
+    if !response.status().is_success() {
+      log::debug!("ノート関連付け取得失敗: {}", response.status());
+      return Ok(existing_ids);
+    }
+
+    let data: serde_json::Value = response.json().await?;
+    let note_ids: Vec<String> = data["results"]
+      .as_array()
+      .unwrap_or(&vec![])
+      .iter()
+      .filter_map(|r| r["toObjectId"].as_u64().map(|id| id.to_string()))
+      .collect();
+
+    if note_ids.is_empty() {
+      return Ok(existing_ids);
+    }
+
+    // ノートの本文をバッチ取得（100件ずつ）
+    for chunk in note_ids.chunks(100) {
+      let batch_request = serde_json::json!({
+        "inputs": chunk.iter().map(|id| serde_json::json!({"id": id})).collect::<Vec<_>>(),
+        "properties": ["hs_note_body"]
+      });
+
+      let batch_url = "https://api.hubapi.com/crm/v3/objects/notes/batch/read";
+      let response = self
+        .client
+        .post(batch_url)
+        .bearer_auth(&self.get_token())
+        .json(&batch_request)
+        .send()
+        .await?;
+
+      if response.status().is_success() {
+        let batch_data: serde_json::Value = response.json().await?;
+        if let Some(results) = batch_data["results"].as_array() {
+          for note in results {
+            if let Some(body) = note["properties"]["hs_note_body"].as_str() {
+              // "Salesforce FeedItem ID: xxx" パターンを抽出
+              if let Some(pos) = body.find("Salesforce FeedItem ID: ") {
+                let id_start = pos + "Salesforce FeedItem ID: ".len();
+                let id_str = &body[id_start..];
+                // IDは</p>の手前まで
+                let feed_item_id = id_str
+                  .split('<')
+                  .next()
+                  .unwrap_or("")
+                  .trim()
+                  .to_string();
+                if !feed_item_id.is_empty() {
+                  existing_ids.insert(feed_item_id);
+                }
+              }
+            }
+          }
+        }
+      }
+
+      tokio::time::sleep(tokio::time::Duration::from_millis(self.rate_limit_delay)).await;
+    }
+
+    Ok(existing_ids)
   }
 
   /// すべてのHubSpotオブジェクトを取得（標準 + カスタム）
@@ -391,7 +519,7 @@ impl HubSpotService {
   async fn get_custom_objects(&self) -> Result<Vec<crate::commands::business::HubSpotObject>> {
     let url = "https://api.hubapi.com/crm/v3/schemas";
 
-    let response = self.client.get(url).bearer_auth(&self.token).send().await?;
+    let response = self.client.get(url).bearer_auth(&self.get_token()).send().await?;
 
     if response.status().is_success() {
       let schema_response: SchemaResponse = response.json().await?;

@@ -103,7 +103,7 @@ pub async fn process_file_mapping(
   let ui_domain = credentials
     .ui_domain
     .unwrap_or_else(|| "app.hubspot.com".to_string());
-  let hubspot_service = HubSpotService::new(credentials.token);
+  let hubspot_service = HubSpotService::new_with_expiry(credentials.token, credentials.expires_at);
 
   emit_progress("extract_records", 20, "対象レコードを抽出中...");
 
@@ -305,6 +305,11 @@ pub async fn process_file_mapping(
             record.salesforce_id
           ),
         );
+
+        // トークンリフレッシュ（レコード処理ごとにチェック）
+        if let Err(e) = hubspot_service.refresh_token_if_needed().await {
+          log::warn!("トークンリフレッシュ失敗: {}", e);
+        }
 
         let hubspot_record_id = hubspot_record_cache
           .get(&record.salesforce_id)
@@ -525,7 +530,7 @@ pub async fn get_hubspot_objects() -> Result<Vec<HubSpotObject>, String> {
     .await
     .map_err(|_| "認証情報が見つかりません。再ログインしてください。")?;
 
-  let service = HubSpotService::new(credentials.token);
+  let service = HubSpotService::new_with_expiry(credentials.token, credentials.expires_at);
 
   match service.get_all_objects().await {
     Ok(objects) => {
@@ -658,7 +663,7 @@ pub async fn process_chatter_migration(
   let ui_domain = credentials
     .ui_domain
     .unwrap_or_else(|| "app.hubspot.com".to_string());
-  let hubspot_service = HubSpotService::new(credentials.token);
+  let hubspot_service = HubSpotService::new_with_expiry(credentials.token, credentials.expires_at);
 
   emit_progress("extract_records", 20, "Chatterレコードを抽出中...");
 
@@ -993,7 +998,32 @@ pub async fn process_chatter_migration(
 
       let mut notes_created = 0;
 
+      // トークンリフレッシュ（レコード処理ごとにチェック）
+      if let Err(e) = hubspot_service.refresh_token_if_needed().await {
+        log::warn!("トークンリフレッシュ失敗: {}", e);
+      }
+
+      // 冪等性チェック: このレコードに既に作成済みのノート（FeedItem ID）を取得
+      let existing_feed_item_ids = if !hubspot_record_id.is_empty() {
+        hubspot_service
+          .find_existing_feed_item_ids(&hubspot_record_id, &mapping.hubspot_object)
+          .await
+          .unwrap_or_default()
+      } else {
+        std::collections::HashSet::new()
+      };
+
       for feed_item_with_comments in &record.feed_items {
+        // 冪等性: 既に作成済みならスキップ
+        if existing_feed_item_ids.contains(&feed_item_with_comments.feed_item.id) {
+          log::info!(
+            "ノートは既に存在するためスキップ: FeedItem {}",
+            feed_item_with_comments.feed_item.id
+          );
+          notes_created += 1; // 既存分もカウント（success扱い）
+          continue;
+        }
+
         // 添付ファイルをアップロードし、ContentDocumentId→HubSpot FileIdのマッピングを作成
         let mut content_doc_to_hubspot_file: HashMap<String, (String, String)> = HashMap::new();
         let mut all_attachment_ids = feed_item_with_comments.feed_item_attachment_ids.clone();
